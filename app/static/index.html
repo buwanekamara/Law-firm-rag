@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contract RAG</title>
+<style>
+  :root {
+    --bg: #ffffff; --panel: #f6f7f9; --border: #d8dce3; --text: #1a1d23;
+    --muted: #5f6672; --accent: #1f4e79; --warn: #8a5300; --warn-bg: #fdf4e3;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --panel: #1c2027; --border: #2c323b; --text: #e6e8ec;
+      --muted: #9aa3b0; --accent: #7aa9d6; --warn: #e0b062; --warn-bg: #2a2317;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .sub code { font-family: var(--mono); font-size: 12px; }
+  textarea {
+    width: 100%; min-height: 74px; resize: vertical; padding: 11px 12px;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--bg);
+    color: var(--text); font: inherit;
+  }
+  textarea:focus, select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 12px; }
+  select, input[type=number] {
+    padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--text); font: inherit;
+  }
+  input[type=number] { width: 72px; }
+  label { color: var(--muted); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+  button {
+    padding: 8px 18px; border: 0; border-radius: 6px; background: var(--accent);
+    color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: 0.55; cursor: default; }
+  .examples { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .examples span { color: var(--muted); font-size: 12px; margin-right: 4px; align-self: center; }
+  .chip {
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    border-radius: 999px; padding: 4px 11px; font-size: 12px; cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent); }
+  section { margin-top: 28px; }
+  h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--muted); margin: 0 0 10px; font-weight: 600;
+  }
+  .answer {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px 18px; white-space: pre-wrap;
+  }
+  .meta { margin-top: 10px; color: var(--muted); font-size: 13px; }
+  .meta b { color: var(--text); font-weight: 600; }
+  .flag {
+    background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn);
+    border-radius: 6px; padding: 9px 12px; margin-top: 10px; font-size: 13px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.num { font-family: var(--mono); color: var(--muted); white-space: nowrap; }
+  details { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin-top: 10px; }
+  summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+  pre {
+    font-family: var(--mono); font-size: 12px; white-space: pre-wrap;
+    background: var(--panel); padding: 12px; border-radius: 6px; overflow-x: auto;
+  }
+  .cite { font-family: var(--mono); font-size: 12.5px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Contract RAG</h1>
+    <div class="sub">
+      Questions answered from five contracts, cited to the section.
+      Interactive API docs at <code><a href="/docs">/docs</a></code>.
+    </div>
+  </header>
+
+  <textarea id="question" placeholder="Ask about the contracts, e.g. what are the confidentiality obligations?"></textarea>
+
+  <div class="controls">
+    <select id="doc"><option value="">All documents</option></select>
+    <label>excerpts <input type="number" id="topk" min="1" max="20" placeholder="8"></label>
+    <label><input type="checkbox" id="debug"> show the prompt</label>
+    <button id="ask">Ask</button>
+    <span id="status" class="sub"></span>
+  </div>
+
+  <div class="examples">
+    <span>Try:</span>
+    <button class="chip">What are the confidentiality obligations?</button>
+    <button class="chip">What notice is required to terminate?</button>
+    <button class="chip">What is the price per unit under the manufacturing agreement?</button>
+    <button class="chip">What is the effective date of the trademark licence?</button>
+    <button class="chip">What is the notice period for terminating the office lease?</button>
+    <button class="chip">What is the capital of France?</button>
+  </div>
+
+  <div id="result" class="hidden">
+    <section>
+      <h2>Answer</h2>
+      <div class="answer" id="answer"></div>
+      <div class="meta" id="meta"></div>
+      <div id="flags"></div>
+    </section>
+
+    <section id="citeBlock">
+      <h2>Citations</h2>
+      <table id="citations"><tbody></tbody></table>
+    </section>
+
+    <section>
+      <h2>Retrieved excerpts</h2>
+      <table id="retrieved">
+        <thead><tr><th>#</th><th>score</th><th>document</th><th>section</th><th>heading</th><th>page</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="debugBlock" class="hidden">
+      <h2>Debug</h2>
+      <details><summary>System prompt</summary><pre id="sys"></pre></details>
+      <details><summary>User prompt, as sent</summary><pre id="usr"></pre></details>
+      <details><summary>Raw model reply</summary><pre id="raw"></pre></details>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+// Populate the document filter from whatever is actually indexed.
+fetch("/documents").then((r) => r.json()).then((docs) => {
+  for (const doc of docs) {
+    const option = document.createElement("option");
+    option.value = doc.doc_id;
+    option.textContent = doc.title;
+    $("doc").appendChild(option);
+  }
+}).catch(() => {});
+
+for (const chip of document.querySelectorAll(".chip")) {
+  chip.addEventListener("click", () => { $("question").value = chip.textContent; ask(); });
+}
+$("ask").addEventListener("click", ask);
+$("question").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) ask();
+});
+
+async function ask() {
+  const question = $("question").value.trim();
+  if (question.length < 3) return;
+
+  const body = { question };
+  if ($("doc").value) body.doc_id = $("doc").value;
+  if ($("topk").value) body.top_k = Number($("topk").value);
+
+  $("ask").disabled = true;
+  $("status").textContent = "thinking...";
+  try {
+    const response = await fetch("/ask?debug=" + $("debug").checked, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      const detail = payload.detail;
+      render({
+        answer: typeof detail === "string" ? detail : (detail?.message || JSON.stringify(detail)),
+        citations: [], retrieved: [], confidence: "-", warnings: ["request rejected: HTTP " + response.status],
+      });
+      return;
+    }
+    render(payload);
+  } catch (error) {
+    render({ answer: "Could not reach the API: " + error, citations: [], retrieved: [], warnings: [] });
+  } finally {
+    $("ask").disabled = false;
+    $("status").textContent = "";
+  }
+}
+
+function render(data) {
+  $("result").classList.remove("hidden");
+  $("answer").textContent = data.answer || "(no answer)";
+
+  const bits = [];
+  if (data.confidence) bits.push(`confidence <b>${esc(data.confidence)}</b>`);
+  if (data.retrieved) bits.push(`<b>${data.retrieved.length}</b> excerpts retrieved`);
+  if (data.doc_filter) bits.push(`filtered to <b>${esc(data.doc_filter)}</b>`);
+  if (data.gate_score !== null && data.gate_score !== undefined) {
+    bits.push(`relevance ${data.gate_score.toFixed(3)}${data.gated ? " <b>(gated)</b>" : ""}`);
+  }
+  $("meta").innerHTML = bits.join(" &nbsp;·&nbsp; ");
+
+  const flags = [];
+  for (const warning of data.warnings || []) flags.push(esc(warning));
+  for (const rejected of data.rejected_citations || []) {
+    flags.push(`citation removed as unverifiable: ${esc(rejected.doc_title)} ${esc(rejected.section)}`);
+  }
+  if (data.parse_error) flags.push("model reply could not be parsed as JSON");
+  $("flags").innerHTML = flags.map((f) => `<div class="flag">${f}</div>`).join("");
+
+  const citations = data.citations || [];
+  $("citeBlock").classList.toggle("hidden", citations.length === 0);
+  $("citations").querySelector("tbody").innerHTML = citations.map((c) => `
+    <tr><td class="cite">${esc(c.doc_title)}</td><td class="cite">${esc(c.section)}</td>
+    <td class="num">${c.page ? "p." + c.page : ""}</td></tr>`).join("");
+
+  $("retrieved").querySelector("tbody").innerHTML = (data.retrieved || []).map((r) => `
+    <tr><td class="num">${r.rank}</td><td class="num">${r.score.toFixed(4)}</td>
+    <td>${esc(r.doc_title)}</td><td class="cite">${esc(r.section)}</td>
+    <td>${esc(r.heading || "")}</td>
+    <td class="num">${r.page_start === r.page_end ? "p." + r.page_start : "pp." + r.page_start + "-" + r.page_end}</td></tr>`).join("");
+
+  const debug = data.debug;
+  $("debugBlock").classList.toggle("hidden", !debug);
+  if (debug) {
+    $("sys").textContent = debug.system_prompt || "";
+    $("usr").textContent = debug.user_prompt || "";
+    $("raw").textContent = debug.raw_response || "";
+  }
+}
+</script>
+</body>
+</html>

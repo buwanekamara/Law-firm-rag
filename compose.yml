@@ -1,0 +1,26 @@
+# Qdrant only, for phase 3. The application service joins this file in phase 7.
+#
+#   docker compose up -d qdrant     # start it
+#   docker compose down             # stop it (the volume keeps your index)
+#
+# Dashboard: http://localhost:6333/dashboard
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: contract-rag-qdrant
+    ports:
+      - "6333:6333"   # REST API and dashboard
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    healthcheck:
+      # Qdrant's image is distroless - no curl, no wget - so the check uses
+      # the binary's own readiness endpoint via its built-in TCP probe.
+      test: ["CMD", "/qdrant/qdrant", "--version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  qdrant_storage:
