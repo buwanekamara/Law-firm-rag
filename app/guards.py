@@ -146,6 +146,28 @@ def reports_placeholder(text: str) -> bool:
     return mentions(text, PLACEHOLDER_PATTERNS)
 
 
+# Phrases that flag an explanation as coming from general knowledge rather
+# than from the excerpts. The distinction is the whole safety of the feature:
+# explaining what "indemnify" means is help, saying who must indemnify whom is
+# a claim, and claims come only from the contracts.
+GENERAL_USAGE_PATTERNS = (
+    "general legal usage",
+    "not defined in these contracts",
+    "not defined in the contracts",
+    "in general usage",
+    "generally means",
+    "in general terms",
+    "commonly means",
+    "not a definition taken from these contracts",
+    "generally,",
+)
+
+
+def marks_general_knowledge(text: str) -> bool:
+    """Did the answer flag an explanation as general rather than contractual?"""
+    return mentions(text, GENERAL_USAGE_PATTERNS)
+
+
 def reports_not_stated(text: str) -> bool:
     """For clauses that address a topic but defer the substance elsewhere."""
     return bool(_NOT_ANSWERED.search(text or ""))

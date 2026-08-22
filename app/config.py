@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     # of five agreements it came from. v3 and v4 both score 21/22 but fail
     # different questions; v4 was chosen for stability and readability.
     # See docs/answer-eval.md.
-    prompt_version: str = "v4"
+    prompt_version: str = "v5"
     masking_enabled: bool = False
 
     @property

@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.answer import answer_question
+from app.conversation import Turn
 from app.config import list_contracts, settings
 from app.indexing import backend_description, collection_size, get_client
 from app.llm import MissingApiKey
@@ -28,8 +29,20 @@ app = FastAPI(
 )
 
 
+class HistoryTurn(BaseModel):
+    question: str = Field(max_length=2000)
+    answer: str = Field(default="", max_length=4000)
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, examples=["What are the confidentiality obligations?"])
+    history: list[HistoryTurn] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Previous turns, oldest first. The client keeps the conversation; "
+        "the server stores nothing. A follow-up that refers back to an earlier turn is "
+        "rewritten into a standalone question before retrieval.",
+    )
     top_k: int | None = Field(default=None, ge=1, le=20)
     doc_id: str | None = Field(
         default=None,
@@ -130,7 +143,11 @@ def ask(
     doc_id = resolve_doc_id(request.doc_id)
     try:
         result = answer_question(
-            request.question, top_k=request.top_k, doc_id=doc_id, debug=debug
+            request.question,
+            top_k=request.top_k,
+            doc_id=doc_id,
+            debug=debug,
+            history=[Turn(question=t.question, answer=t.answer) for t in request.history],
         )
     except MissingApiKey as error:
         raise HTTPException(status_code=503, detail=str(error)) from error

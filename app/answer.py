@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.chunking import citation_header
 from app.config import settings
+from app.conversation import Turn, condense, recent, render_history
 from app.guards import verify_citations
 from app.llm import complete
 from app.masking import describe, mask_excerpts, unmask_text
@@ -29,10 +30,20 @@ from app.retrieval import SearchResult, best_similarity, search
 # Models sometimes wrap JSON in a code fence despite being told not to.
 _CODE_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
-NOTHING_RETRIEVED = "No relevant clause was found in the contracts provided."
+# Refusals a person can act on. "Nothing found" tells the reader neither what
+# went wrong nor what to try instead, which in a conversation is close to
+# useless - so both of these say what the system does cover.
+_SCOPE = (
+    "I can only answer from five agreements: the Hosting, Joint Venture, Manufacturing, "
+    "Trademark License and Gas Transportation agreements."
+)
+NOTHING_RETRIEVED = (
+    f"The contracts provided do not contain anything relevant to that. {_SCOPE} "
+    "Try asking about one of them."
+)
 BELOW_THRESHOLD = (
-    "No sufficiently relevant clause was found in the contracts provided, so no answer "
-    "was generated."
+    f"That does not appear to be a question about these contracts, so I have not answered it. "
+    f"{_SCOPE}"
 )
 
 
@@ -52,6 +63,7 @@ class ModelAnswer(BaseModel):
     answer: str
     citations: list[Citation] = Field(default_factory=list)
     confidence: str = "medium"
+    needs_clarification: bool = False
 
 
 @dataclass
@@ -62,6 +74,12 @@ class AnswerResult:
     confidence: str
     retrieved: list[dict[str, Any]]
     doc_filter: str | None = None
+    # True when the reply is a question back to the user rather than an answer.
+    needs_clarification: bool = False
+    # The follow-up rewritten to stand alone, when it had to be. Kept because
+    # "what about the other one?" retrieving nothing is baffling unless you can
+    # see what was actually searched for.
+    standalone_question: str | None = None
     parse_error: str | None = None
     # Citations the model claimed that do not correspond to any chunk it was
     # shown. They are removed from `citations` rather than displayed, because
@@ -117,10 +135,21 @@ def answer_question(
     debug: bool = False,
     prompt_version: str | None = None,
     client: Any = None,
+    history: list[Turn] | None = None,
 ) -> AnswerResult:
-    """Answer one question from the indexed contracts."""
+    """Answer one question from the indexed contracts.
+
+    `history` is the conversation so far, supplied by the caller - nothing is
+    stored server-side. A follow-up that depends on it is rewritten into a
+    standalone question before retrieval, because "what about the other one?"
+    has nothing in it worth searching for.
+    """
     top_k = top_k or settings.top_k
-    results = search(question, top_k=top_k, doc_id=doc_id, client=client)
+    turns = recent(history)
+    standalone = condense(question, turns) if turns else question
+    rewritten = standalone if standalone != question else None
+
+    results = search(standalone, top_k=top_k, doc_id=doc_id, client=client)
 
     retrieved = [
         {
@@ -140,6 +169,7 @@ def answer_question(
             confidence="low",
             retrieved=[],
             doc_filter=doc_id,
+            standalone_question=rewritten,
         )
 
     # Guard one: refuse before the model is involved.
@@ -159,6 +189,7 @@ def answer_question(
                 confidence="low",
                 retrieved=retrieved,
                 doc_filter=doc_id,
+                standalone_question=rewritten,
                 gated=True,
                 gate_score=gate_score,
                 warnings=[
@@ -173,7 +204,9 @@ def answer_question(
     # Everything up to here ran locally; this is the only moment contract text
     # leaves the machine.
     masked = mask_excerpts(build_excerpts(results))
-    user_prompt = render_user_prompt(question, masked.text, prompt_version)
+    user_prompt = render_user_prompt(
+        question, masked.text, prompt_version, history=render_history(turns)
+    )
 
     raw = complete(system_prompt, user_prompt)
 
@@ -251,12 +284,16 @@ def answer_question(
         rejected_citations=unsupported,
         gate_score=gate_score,
         warnings=warnings,
+        needs_clarification=parsed.needs_clarification,
+        standalone_question=rewritten,
     )
 
     if debug:
         result.debug = {
             "prompt_version": prompt_version or settings.prompt_version,
             "model": settings.llm_model,
+            "standalone_question": standalone,
+            "history_turns": len(turns),
             "search_mode": settings.search_mode,
             "system_prompt": system_prompt,
             # The prompt exactly as sent - masked, if masking is on.

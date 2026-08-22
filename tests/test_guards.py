@@ -236,3 +236,19 @@ def test_negation_survives_an_adverb(text):
 def test_a_real_answer_is_still_not_a_refusal(text):
     """The looser pattern must not start swallowing genuine answers."""
     assert not looks_like_refusal(text)
+
+
+@pytest.mark.parametrize(
+    "text, flagged",
+    [
+        ("In general legal usage, to indemnify is to cover another's losses.", True),
+        ("This term is not defined in these contracts, but generally means...", True),
+        ("Indemnify means the Licensee must cover the Licensor's losses.", False),
+    ],
+)
+def test_general_knowledge_explanations_must_announce_themselves(text, flagged):
+    """Explaining a word is help; presenting general knowledge as the
+    contract's own definition is the thing to catch."""
+    from app.guards import marks_general_knowledge
+
+    assert marks_general_knowledge(text) is flagged

@@ -11,12 +11,33 @@ and every { in them would otherwise have to be escaped.
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from pathlib import Path
 
 from app.config import settings
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
+
+# The user's message is fenced so the model can tell a question from an
+# instruction. A fence only works if the person on the other side cannot close
+# it: a question that itself contains the fence characters would otherwise end
+# it early, leaving whatever follows sitting exactly where instructions go.
+# Runs of three or more quote characters are therefore replaced with visually
+# similar characters that carry no structural meaning. The reader sees the same
+# sentence; the parser sees no fence.
+FENCE = "'''"
+_FENCE_RUN = re.compile("([`'\"])\\1{2,}")
+_LOOKALIKE = {"'": "\u2019", "`": "\u00b4", '"': "\u201d"}
+
+
+def neutralise_fences(text: str) -> str:
+    """Make user-supplied text unable to close the fence it is wrapped in."""
+    return _FENCE_RUN.sub(lambda match: _LOOKALIKE[match.group(1)] * len(match.group(0)), text or "")
+
+
+def fenced(text: str) -> str:
+    return f"{FENCE}\n{neutralise_fences(text)}\n{FENCE}"
 
 SYSTEM_MARKER = "# System"
 USER_MARKER = "# User"
@@ -52,9 +73,22 @@ def render(template_name: str, **values: str) -> tuple[str, str]:
     return system, user
 
 
-def render_user_prompt(question: str, excerpts: str, version: str | None = None) -> str:
+def render_user_prompt(
+    question: str, excerpts: str, version: str | None = None, history: str = ""
+) -> str:
+    """Fill an answer template.
+
+    Older prompt versions have no {{HISTORY}} slot; substituting into them is
+    a no-op, so one call site serves every version.
+    """
     _, template = load_prompt(version)
-    return template.replace("{{EXCERPTS}}", excerpts).replace("{{QUESTION}}", question)
+    # Excerpts are corpus text and are not fenced. The question and the history
+    # come from whoever is using the system, so both are.
+    return (
+        template.replace("{{EXCERPTS}}", excerpts)
+        .replace("{{QUESTION}}", fenced(question))
+        .replace("{{HISTORY}}", neutralise_fences(history) or "(this is the first message)")
+    )
 
 
 def available_versions() -> list[str]:
