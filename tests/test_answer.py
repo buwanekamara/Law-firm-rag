@@ -8,18 +8,16 @@ out of a messy reply, and what happens when the model misbehaves.
 import json
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.answer import (
-    ModelAnswer,
     answer_question,
     build_excerpts,
     extract_json,
     parse_answer,
 )
 from app.api import app
-from app.prompting import available_versions, load_prompt, render_user_prompt
-from app.retrieval import search
+from app.generate.prompting import available_versions, load_prompt, render_user_prompt
+from app.search.retrieval import search
+from fastapi.testclient import TestClient
 
 GOOD_REPLY = json.dumps(
     {

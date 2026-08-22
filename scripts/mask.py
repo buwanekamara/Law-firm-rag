@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import argparse
 
-from app.masking import (
+from app.safety.masking import (
     MASKED_ENTITIES,
     MIN_CONFIDENCE,
     MaskingUnavailable,
@@ -26,7 +26,7 @@ from app.masking import (
 def scan_corpus() -> None:
     from collections import Counter
 
-    from app.chunking import load_chunks
+    from app.ingest.chunking import load_chunks
 
     totals: Counter[str] = Counter()
     values: dict[str, set[str]] = {}

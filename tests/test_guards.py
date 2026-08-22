@@ -4,8 +4,8 @@ Phase 5 uses these for evaluation; phase 6 puts them in the answer path.
 """
 
 import pytest
-
-from app.guards import (
+from app.generate.prompting import available_versions, load_prompt
+from app.safety.guards import (
     citation_matches,
     looks_like_refusal,
     normalise_label,
@@ -14,8 +14,6 @@ from app.guards import (
     reports_redaction,
     verify_citations,
 )
-from app.prompting import available_versions, load_prompt
-
 
 # --- label normalisation ---------------------------------------------------
 
@@ -171,7 +169,7 @@ def test_v3_requires_a_citation_when_the_value_is_unavailable():
 # --- the judge prompt ------------------------------------------------------
 
 def test_judge_prompt_renders_both_slots():
-    from app.prompting import render
+    from app.generate.prompting import render
 
     system, user = render("judge_v1", EXCERPTS="THE EXCERPTS", ANSWER="THE ANSWER")
     assert "atomic factual claims" in system
@@ -183,7 +181,7 @@ def test_judge_prompt_covers_the_refusal_and_marker_cases():
     """A refusal is a claim too: "the excerpts do not contain X" is supported
     when X genuinely is not there. Without this the judge marks every correct
     refusal as unfaithful."""
-    from app.prompting import load_named_prompt
+    from app.generate.prompting import load_named_prompt
 
     system, _ = load_named_prompt("judge_v1")
     assert "do not* contain" in system or "do not" in system
@@ -249,6 +247,6 @@ def test_a_real_answer_is_still_not_a_refusal(text):
 def test_general_knowledge_explanations_must_announce_themselves(text, flagged):
     """Explaining a word is help; presenting general knowledge as the
     contract's own definition is the thing to catch."""
-    from app.guards import marks_general_knowledge
+    from app.safety.guards import marks_general_knowledge
 
     assert marks_general_knowledge(text) is flagged

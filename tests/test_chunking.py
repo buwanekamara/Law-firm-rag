@@ -6,8 +6,8 @@ silently drifts produces citations that look right and are wrong.
 """
 
 import pytest
-
-from app.chunking import (
+from app.config import list_contracts
+from app.ingest.chunking import (
     MAX_WORDS,
     chunk_document,
     citation_header,
@@ -15,8 +15,7 @@ from app.chunking import (
     flatten_pages,
     short_title,
 )
-from app.extraction import extract_document
-from app.config import list_contracts
+from app.ingest.extraction import extract_document
 
 
 @pytest.fixture(scope="module")
@@ -108,7 +107,7 @@ def test_first_sentence_stays_in_the_chunk_text(chunks_by_doc):
 # --- metadata every citation depends on ------------------------------------
 
 def test_every_chunk_is_citable(chunks_by_doc):
-    for doc_id, chunks in chunks_by_doc.items():
+    for chunks in chunks_by_doc.values():
         for chunk in chunks:
             assert chunk["doc_title"], chunk["chunk_id"]
             assert chunk["section_label"], chunk["chunk_id"]

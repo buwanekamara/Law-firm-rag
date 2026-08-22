@@ -6,18 +6,21 @@ usable demo on its own, so a hand-written UI can wait until everything else
 works.
 """
 
+import json
+import queue
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.answer import answer_question
-from app.conversation import Turn
 from app.config import list_contracts, settings
-from app.indexing import backend_description, collection_size, get_client
-from app.llm import MissingApiKey
-from app.retrieval import list_indexed_documents
+from app.generate.conversation import Turn
+from app.generate.llm import MissingApiKey
+from app.search.indexing import backend_description, collection_size, get_client
+from app.search.retrieval import list_indexed_documents
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -119,6 +122,56 @@ def health() -> dict:
         "gateway_key_configured": bool(settings.ai_gateway_api_key),
         "masking_enabled": settings.masking_enabled,
     }
+
+
+@app.post("/ask/stream")
+def ask_stream(request: AskRequest, debug: bool = Query(default=False)) -> StreamingResponse:
+    """The same answer, with the pipeline's progress reported as it happens.
+
+    Newline-delimited JSON rather than server-sent events, because the request
+    carries a body and EventSource can only issue GETs.
+
+    The *answer* is not streamed - it arrives whole, in the final event.
+    Citations are verified and masked names restored only once the model's
+    reply is complete, and streaming the prose would put text on screen that
+    nothing had checked yet. What is streamed is what the system is doing
+    during the seconds that takes, which is the part a person is waiting on.
+    """
+    if collection_size() == 0:
+        raise HTTPException(status_code=503, detail="No chunks are indexed. Run: uv run scripts/index.py")
+    doc_id = resolve_doc_id(request.doc_id)
+
+    events: queue.Queue = queue.Queue()
+    DONE = object()
+
+    def work() -> None:
+        try:
+            result = answer_question(
+                request.question,
+                top_k=request.top_k,
+                doc_id=doc_id,
+                debug=debug,
+                history=[Turn(question=t.question, answer=t.answer) for t in request.history],
+                progress=events.put,
+            )
+            events.put({"stage": "done", "result": result.to_dict()})
+        except MissingApiKey as error:
+            events.put({"stage": "error", "detail": str(error)})
+        except Exception as error:  # the client needs to hear about it, whatever it was
+            events.put({"stage": "error", "detail": f"{type(error).__name__}: {error}"})
+        finally:
+            events.put(DONE)
+
+    def stream():
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+        while True:
+            event = events.get()
+            if event is DONE:
+                return
+            yield json.dumps(event) + "\n"
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
 @app.post("/ask")

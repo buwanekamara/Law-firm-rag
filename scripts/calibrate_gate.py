@@ -23,8 +23,8 @@ import json
 from pathlib import Path
 
 from app.config import settings
-from app.indexing import collection_size
-from app.retrieval import best_similarity
+from app.search.indexing import collection_size
+from app.search.retrieval import best_similarity
 
 QUESTIONS_PATH = Path(__file__).resolve().parents[1] / "eval" / "questions.jsonl"
 

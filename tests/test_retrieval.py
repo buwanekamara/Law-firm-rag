@@ -5,10 +5,8 @@ eval/retrieval_eval.py and is run against the real models.
 """
 
 import pytest
-from qdrant_client import models
-
 from app.config import settings
-from app.indexing import (
+from app.search.indexing import (
     DENSE_VECTOR,
     SPARSE_VECTOR,
     collection_size,
@@ -16,7 +14,8 @@ from app.indexing import (
     point_id,
     text_for_embedding,
 )
-from app.retrieval import infer_doc_filter, list_indexed_documents, search
+from app.search.retrieval import infer_doc_filter, list_indexed_documents, search
+from qdrant_client import models
 
 
 def test_every_chunk_is_indexed(indexed_client):
@@ -38,7 +37,7 @@ def test_sparse_vectors_use_idf(indexed_client):
 
 def test_reindexing_does_not_duplicate(indexed_client, stub_embeddings):
     """Point ids are derived from chunk ids, so a rerun overwrites."""
-    from app.chunking import chunk_all
+    from app.ingest.chunking import chunk_all
 
     before = collection_size(indexed_client)
     index_chunks(chunk_all(save=False), client=indexed_client, recreate=False)

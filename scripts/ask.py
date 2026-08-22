@@ -17,10 +17,9 @@ import textwrap
 
 from app.answer import answer_question
 from app.config import settings
-from app.indexing import collection_size
-from app.llm import MissingApiKey, list_models
-from app.retrieval import list_indexed_documents
-from app.indexing import get_client
+from app.generate.llm import MissingApiKey, list_models
+from app.search.indexing import collection_size, get_client
+from app.search.retrieval import list_indexed_documents
 
 
 def resolve_doc(fragment: str | None) -> str | None:

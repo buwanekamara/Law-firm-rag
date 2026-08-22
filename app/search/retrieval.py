@@ -40,14 +40,14 @@ from typing import Any
 from qdrant_client import QdrantClient, models
 
 from app.config import settings
-from app.embeddings import embed_query
-from app.indexing import DENSE_VECTOR, SPARSE_VECTOR, get_client
+from app.search.embeddings import embed_query
+from app.search.indexing import DENSE_VECTOR, SPARSE_VECTOR, get_client
 
 # Each branch of the hybrid search fetches this multiple of the requested
 # result count before fusion. Fusing two top-5 lists gives the ranking very
 # little to work with; fusing two top-20 lists lets a chunk that placed 12th
 # on one side and 2nd on the other still surface.
-PREFETCH_MULTIPLIER = 4
+PREFETCH_MULTIPLIER = settings.prefetch_multiplier
 
 # The configured default is "dense" (see the module docstring). All three
 # remain available so eval/retrieval_eval.py can compare them.

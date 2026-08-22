@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import argparse
 
-from app.extraction import extract_all
 from app.config import settings
+from app.ingest.extraction import extract_all
 
 
 def main() -> None:

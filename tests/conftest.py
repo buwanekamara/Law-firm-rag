@@ -12,6 +12,40 @@ the real models and a real Qdrant.
 
 from __future__ import annotations
 
+import os
+
+# Every setting is required and read from the environment, so the suite
+# supplies its own. This runs before any app module is imported, and takes
+# precedence over a developer's .env - which is the point: a test that depends
+# on someone's local configuration is not a test. Values that change
+# behaviour are pinned again in hermetic_settings below.
+TEST_ENVIRONMENT = {
+    "AI_GATEWAY_API_KEY": "test-key-not-used",
+    "AI_GATEWAY_BASE_URL": "https://ai-gateway.invalid/v1",
+    "LLM_MODEL": "test/model",
+    "JUDGE_MODEL": "test/judge",
+    "LLM_TEMPERATURE": "0",
+    "QDRANT_URL": "http://localhost:6333",
+    "QDRANT_PATH": "",
+    "QDRANT_COLLECTION": "contract_chunks",
+    "DENSE_MODEL": "BAAI/bge-small-en-v1.5",
+    "SPARSE_MODEL": "Qdrant/bm25",
+    "SEARCH_MODE": "hybrid",
+    "TOP_K": "8",
+    "PREFETCH_MULTIPLIER": "4",
+    "MIN_SCORE": "0.0",
+    "CITATION_RETRY": "true",
+    "CHUNK_MAX_WORDS": "350",
+    "CHUNK_OVERLAP_WORDS": "50",
+    "EMBED_BATCH_SIZE": "32",
+    "HISTORY_TURNS": "6",
+    "LLM_TIMEOUT_SECONDS": "90",
+    "PROMPT_VERSION": "v1",
+    "MASKING_ENABLED": "false",
+    "MASKING_MIN_CONFIDENCE": "0.6",
+}
+os.environ.update(TEST_ENVIRONMENT)
+
 import hashlib
 import re
 from collections import Counter
@@ -50,6 +84,26 @@ def fake_sparse(text: str) -> FakeSparse:
     return FakeSparse(list(counts), [float(count) for count in counts.values()])
 
 
+@pytest.fixture(scope="session")
+def env_template() -> dict[str, str]:
+    """.env.example, parsed into a mapping.
+
+    With no fallback values in code, this file is not documentation - it is
+    the complete description of what a deployment must supply, and the values
+    a deployment starts from. Tests assert against it for that reason.
+    """
+    from app.config import PROJECT_ROOT
+
+    values: dict[str, str] = {}
+    for line in (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        values[name.strip()] = value.strip()
+    return values
+
+
 @pytest.fixture(autouse=True, scope="session")
 def hermetic_settings():
     """Run the suite against known settings, not the developer's .env.
@@ -83,8 +137,8 @@ def hermetic_settings():
 @pytest.fixture(scope="session")
 def stub_embeddings(session_mocker=None):
     """Patch the two embedding entry points for the whole session."""
-    import app.indexing as indexing
-    import app.retrieval as retrieval
+    import app.search.indexing as indexing
+    import app.search.retrieval as retrieval
 
     original_documents = indexing.embed_documents
     original_query = retrieval.embed_query
@@ -102,8 +156,8 @@ def stub_embeddings(session_mocker=None):
 @pytest.fixture(scope="session")
 def indexed_client(stub_embeddings):
     """An in-process Qdrant holding every chunk. No Docker, no network."""
-    from app.chunking import chunk_all
-    from app.indexing import get_client, index_chunks
+    from app.ingest.chunking import chunk_all
+    from app.search.indexing import get_client, index_chunks
 
     client = get_client(":memory:")
     index_chunks(chunk_all(save=False), client=client)

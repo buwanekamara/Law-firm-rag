@@ -16,9 +16,9 @@ from __future__ import annotations
 import argparse
 import time
 
-from app.chunking import load_chunks
 from app.config import settings
-from app.indexing import backend_description, collection_size, get_client, index_chunks
+from app.ingest.chunking import load_chunks
+from app.search.indexing import backend_description, collection_size, get_client, index_chunks
 
 
 def main() -> None:

@@ -7,7 +7,6 @@ refusing to publish a citation it made up.
 import json
 
 import pytest
-
 from app.answer import BELOW_THRESHOLD, answer_question
 from app.config import settings
 
@@ -45,13 +44,16 @@ def stub_llm(monkeypatch):
 
 # --- guard one: the relevance gate ----------------------------------------
 
-def test_gate_ships_disabled():
-    """An uncalibrated threshold is worse than none, so the packaged default
-    is 0. A deployment calibrates it and sets MIN_SCORE in its own .env - which
-    is why this asserts the default rather than the live value."""
+def test_the_gate_threshold_is_configuration_not_a_code_default(env_template):
+    """There is no threshold worth baking into the code. 0 lets every question
+    through; a guessed value refuses real ones. So the setting is required, and
+    the shipped template carries the value scripts/calibrate_gate.py measured on
+    this corpus - off-topic queries top out at 0.55, the weakest genuine
+    question scores 0.63. See docs/retrieval-eval.md."""
     from app.config import Settings
 
-    assert Settings.model_fields["min_score"].default == 0
+    assert Settings.model_fields["min_score"].is_required()
+    assert float(env_template["MIN_SCORE"]) == 0.56
 
 
 def test_no_gate_call_when_the_threshold_is_zero(indexed_client, stub_llm):

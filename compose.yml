@@ -1,9 +1,17 @@
-# Qdrant only, for phase 3. The application service joins this file in phase 7.
+# The whole system, from a clean machine:
 #
-#   docker compose up -d qdrant     # start it
-#   docker compose down             # stop it (the volume keeps your index)
+#   copy .env.example .env      # then paste your gateway key into it
+#   docker compose up --build
 #
-# Dashboard: http://localhost:6333/dashboard
+# Three services start in order. Qdrant comes up and reports healthy; ingest
+# reads the contracts, chunks them and builds the index, then exits; the API
+# starts once ingest has finished successfully. Open http://localhost:8000.
+#
+#   docker compose down          stop everything, keep the index
+#   docker compose down -v       stop everything and discard the index
+#
+# Masking needs a language model that is left out of the image by default.
+# To include it:  INSTALL_MASKING=true docker compose build
 
 services:
   qdrant:
@@ -21,6 +29,54 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # One-shot. Extract text from the PDFs, split it into clause-aware chunks,
+  # embed them and write them to Qdrant. Runs to completion and stops.
+  #
+  # It rebuilds the collection every time rather than adding to it. Roughly a
+  # minute, and it is the only way to be certain the index matches the
+  # contracts in the image rather than whatever a previous run left behind.
+  ingest:
+    build:
+      context: .
+      args:
+        INSTALL_MASKING: ${INSTALL_MASKING:-false}
+    image: contract-rag:latest
+    container_name: contract-rag-ingest
+    env_file: .env
+    environment:
+      # .env is written for running on the host, where Qdrant is reachable on
+      # localhost. Inside the compose network it answers to its service name.
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_PATH: ""
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    command: >
+      sh -c "python scripts/extract.py &&
+             python scripts/chunk.py &&
+             python scripts/index.py"
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      args:
+        INSTALL_MASKING: ${INSTALL_MASKING:-false}
+    image: contract-rag:latest
+    container_name: contract-rag-app
+    env_file: .env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_PATH: ""
+    ports:
+      - "8000:8000"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ingest:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
 volumes:
   qdrant_storage:

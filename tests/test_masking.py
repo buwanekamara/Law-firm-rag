@@ -9,8 +9,8 @@ import pytest
 
 pytest.importorskip("presidio_analyzer", reason="presidio is optional")
 
-from app.config import settings  # noqa: E402
-from app.masking import (  # noqa: E402
+from app.config import settings
+from app.safety.masking import (
     MASKED_ENTITIES,
     defined_terms,
     mask_excerpts,
@@ -90,10 +90,10 @@ def test_unmasking_handles_double_digit_placeholders():
 
 # --- the kill switch -------------------------------------------------------
 
-def test_masking_is_off_by_default():
-    from app.config import Settings
-
-    assert Settings.model_fields["masking_enabled"].default is False
+def test_masking_ships_off(env_template):
+    """Masking changes what the model is shown, so switching it on is a
+    deliberate act by a deployment, never something that happens quietly."""
+    assert env_template["MASKING_ENABLED"] == "false"
 
 
 def test_kill_switch_bypasses_everything(monkeypatch):

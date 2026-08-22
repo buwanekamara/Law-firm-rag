@@ -10,20 +10,22 @@ results itself with hand-rolled score maths.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from qdrant_client import QdrantClient, models
 
-from app.chunking import citation_header, load_chunks
 from app.config import PROJECT_ROOT, settings
-from app.embeddings import DENSE_DIMENSIONS, embed_documents
+from app.ingest.chunking import citation_header, load_chunks
+from app.search.embeddings import DENSE_DIMENSIONS, embed_documents
 
 DENSE_VECTOR = "dense"
 SPARSE_VECTOR = "sparse"
 
-# Embedding in batches keeps memory flat and gives the CLI something to report.
-BATCH_SIZE = 32
+# Embedding in batches keeps memory flat and gives the CLI something to
+# report. Lower EMBED_BATCH_SIZE on a memory-constrained host.
+BATCH_SIZE = settings.embed_batch_size
 
 
 def get_client(url: str | None = None, path: str | None = None) -> QdrantClient:
@@ -129,7 +131,7 @@ def build_points(chunks: list[dict[str, Any]]) -> Iterable[models.PointStruct]:
     for start in range(0, len(chunks), BATCH_SIZE):
         batch = chunks[start : start + BATCH_SIZE]
         dense_vectors, sparse_vectors = embed_documents([text_for_embedding(c) for c in batch])
-        for chunk, dense, sparse in zip(batch, dense_vectors, sparse_vectors):
+        for chunk, dense, sparse in zip(batch, dense_vectors, sparse_vectors, strict=True):
             yield models.PointStruct(
                 id=point_id(chunk["chunk_id"]),
                 vector={

@@ -32,7 +32,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, Iterable
 
 from app.config import settings
 
@@ -52,7 +51,7 @@ MASKED_ENTITIES = (
 # Presidio reports a confidence per detection. The ZIP+4 mistaken for a social
 # security number scored 0.05; genuine detections in this corpus score 0.85 or
 # 1.0, so the threshold has plenty of room.
-MIN_CONFIDENCE = 0.6
+MIN_CONFIDENCE = settings.masking_min_confidence
 
 # A detected span longer than this, or containing a line break, is a parsing
 # artefact rather than a name. Presidio produced "Schedule B.\n(iii) Heritage"
@@ -104,7 +103,7 @@ def defined_terms() -> frozenset[str]:
     new code.
     """
     try:
-        from app.chunking import load_chunks
+        from app.ingest.chunking import load_chunks
 
         chunks = load_chunks()
     except (FileNotFoundError, OSError):

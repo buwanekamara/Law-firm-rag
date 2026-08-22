@@ -5,9 +5,8 @@ matter in relation to what is actually inside these files.
 from pathlib import Path
 
 import pytest
-
 from app.config import list_contracts
-from app.extraction import (
+from app.ingest.extraction import (
     PLACEHOLDER_MARKER,
     REDACTION_MARKER,
     clean_page,

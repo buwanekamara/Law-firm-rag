@@ -1,8 +1,7 @@
 """Phase 0 smoke test: the app boots and can see the contracts folder."""
 
-from fastapi.testclient import TestClient
-
 from app.api import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 

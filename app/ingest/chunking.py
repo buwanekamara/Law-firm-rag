@@ -21,14 +21,16 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.config import settings
-from app.extraction import load_document
+from app.ingest.extraction import load_document
 
 # How large a chunk may get before it is split, measured in words.
 # The embedding model (bge-small-en-v1.5) accepts 512 tokens, and English
 # prose runs roughly 1.3 tokens per word, so 350 words leaves headroom rather
 # than silently having the tail of a clause truncated at embedding time.
-MAX_WORDS = 350
-OVERLAP_WORDS = 50
+# CHUNK_MAX_WORDS / CHUNK_OVERLAP_WORDS. Changing either means the stored
+# chunks no longer match the configuration: re-run extract, chunk and index.
+MAX_WORDS = settings.chunk_max_words
+OVERLAP_WORDS = settings.chunk_overlap_words
 
 # A style must produce at least this many headings to be believed. It is what
 # separates "this document is organised in numbered sections" from "this

@@ -22,8 +22,8 @@ from datetime import date
 from pathlib import Path
 
 from app.config import PROJECT_ROOT, settings
-from app.indexing import collection_size, get_client
-from app.retrieval import SEARCH_MODES, infer_doc_filter, list_indexed_documents, search
+from app.search.indexing import collection_size, get_client
+from app.search.retrieval import SEARCH_MODES, infer_doc_filter, list_indexed_documents, search
 
 QUESTIONS_PATH = Path(__file__).with_name("questions.jsonl")
 REPORT_PATH = PROJECT_ROOT / "docs" / "retrieval-eval.md"
@@ -129,7 +129,7 @@ def print_comparison(reports: list[dict]) -> None:
     print("-" * 104)
     for question_id in ids:
         row = by_mode[modes[0]][question_id]
-        def cell(mode: str) -> str:
+        def cell(mode: str, question_id: str = question_id) -> str:
             entry = by_mode[mode][question_id]
             return "n/a" if not entry["scored"] else str(entry["rank"] or "miss")
 

@@ -19,8 +19,9 @@ from openai import OpenAI
 
 from app.config import settings
 
-# Generous, because a slow gateway is a worse failure than a slow answer.
-REQUEST_TIMEOUT_SECONDS = 90.0
+# Generous by default, because a slow gateway is a worse failure than a slow
+# answer. LLM_TIMEOUT_SECONDS overrides it.
+REQUEST_TIMEOUT_SECONDS = settings.llm_timeout_seconds
 
 
 class MissingApiKey(RuntimeError):

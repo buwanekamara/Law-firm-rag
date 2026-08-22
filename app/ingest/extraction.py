@@ -35,14 +35,14 @@ PLACEHOLDER_MARKER = "[·]"
 # These PDFs use non-breaking and typographic spaces instead of plain ones -
 # two of the five are made almost entirely of them. Left alone, "Article\xa0V"
 # never matches a search for "Article V".
-_UNICODE_SPACES = "       ⁠﻿"
+_UNICODE_SPACES = "       ⁠﻿"  # noqa: RUF001 - lookalike spaces are the point
 
 # EDGAR stamps this on the bottom of every page of a filed exhibit. It is not
 # part of the contract, and repeated 20 times it pollutes retrieval.
 _EDGAR_FOOTER = re.compile(r"^Source:\s+.+,\s+.+,\s+\d{1,2}/\d{1,2}/\d{4}\s*$")
 
 # A line holding nothing but a page number, optionally dashed: 4, -4-, - 4 -.
-_PAGE_NUMBER = re.compile(r"^[-–—]?\s*\d{1,3}\s*[-–—]?$")
+_PAGE_NUMBER = re.compile(r"^[-–—]?\s*\d{1,3}\s*[-–—]?$")  # noqa: RUF001 - en dashes appear in the PDFs
 
 # A word broken across a line break: "indemni-\nfication" -> "indemnification".
 # Restricted to lowercase on both sides so hyphenated proper nouns and

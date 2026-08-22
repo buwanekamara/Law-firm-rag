@@ -1,0 +1,26 @@
+# Kept out of the build context: anything secret, anything derived, anything
+# large enough to slow the build down without earning its place in the image.
+
+.venv/
+.env
+.git/
+.gitignore
+.pytest_cache/
+.ruff_cache/
+**/__pycache__/
+*.pyc
+
+# Derived at ingest time inside the container.
+data/
+qdrant_local/
+qdrant_data/
+
+# Not part of the running system.
+tests/
+eval/
+docs/
+development-blueprint.md
+Take Home Assessment*.pdf
+compose.yml
+Dockerfile
+.dockerignore

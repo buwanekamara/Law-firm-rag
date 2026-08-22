@@ -14,8 +14,8 @@ from __future__ import annotations
 import argparse
 import textwrap
 
-from app.retrieval import infer_doc_filter, list_indexed_documents, search
-from app.indexing import backend_description, collection_size, get_client
+from app.search.indexing import backend_description, collection_size, get_client
+from app.search.retrieval import infer_doc_filter, list_indexed_documents, search
 
 
 def main() -> None:

@@ -18,8 +18,8 @@ Both models run locally on CPU. Nothing is sent anywhere to embed a query.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from functools import lru_cache
-from typing import Iterable
 
 from fastembed import SparseTextEmbedding, TextEmbedding
 from fastembed.sparse.sparse_embedding_base import SparseEmbedding

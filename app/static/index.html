@@ -66,6 +66,11 @@
     margin-bottom: 14px; white-space: pre-wrap;
   }
   .searched { font-size: 12px; color: var(--muted); margin: -8px 0 12px 2px; }
+  .progress { font-size: 13px; color: var(--muted); line-height: 1.9; }
+  .progress .row { display: flex; gap: 8px; align-items: baseline; }
+  .progress .row.now { color: var(--text); }
+  .progress .tick { font-family: var(--mono); font-size: 11px; opacity: 0.7; width: 12px; }
+  .progress .detail { font-family: var(--mono); font-size: 11.5px; opacity: 0.75; }
   .said { white-space: pre-wrap; }
   .said.asking { border-left: 3px solid var(--ask); background: var(--ask-bg); padding: 10px 14px; border-radius: 0 8px 8px 0; }
   .meta { margin-top: 10px; color: var(--muted); font-size: 12.5px; }
@@ -171,6 +176,13 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Progress arrives faster than it can be read - retrieval is local and takes
+// milliseconds - so each step is held on screen briefly before the next
+// replaces it as current. Purely presentational: nothing waits on this.
+const STEP_MS = 420;
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 
 // The whole conversation lives here. Nothing is stored server-side; these turns
@@ -230,20 +242,45 @@ async function send() {
   if ($("doc").value) body.doc_id = $("doc").value;
   if ($("topk").value) body.top_k = Number($("topk").value);
 
-  const node = append(`<div class="you">${esc(question)}</div><div class="said meta">thinking...</div>`);
+  const node = append(`<div class="you">${esc(question)}</div><div class="progress"></div>`);
+  const progress = node.querySelector(".progress");
+  const steps = [];
+  const queued = [];
+  let pumping = false;
+
+  const pump = async () => {
+    if (pumping) return;
+    pumping = true;
+    while (queued.length) {
+      steps.push(queued.shift());
+      drawProgress();
+      await sleep(REDUCED_MOTION ? 0 : STEP_MS);
+    }
+    pumping = false;
+  };
+  const settle = async () => {
+    while (queued.length || pumping) await sleep(40);
+  };
+
+  const drawProgress = () => {
+    progress.innerHTML = steps.map((s, i) => `<div class="row${i === steps.length - 1 ? " now" : ""}">`
+      + `<span class="tick">${i === steps.length - 1 ? "\u2022" : "\u2713"}</span>`
+      + `<span>${esc(s.label)}${s.detail ? ` <span class="detail">${esc(s.detail)}</span>` : ""}</span></div>`).join("");
+    $("thread").scrollTop = $("thread").scrollHeight;
+  };
   $("question").value = "";
   $("question").style.height = "auto";
   $("send").disabled = true;
 
   try {
-    const response = await fetch("/ask?debug=" + $("debug").checked, {
+    const response = await fetch("/ask/stream?debug=" + $("debug").checked, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const payload = await response.json();
 
     if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
       const detail = payload.detail;
       const message = typeof detail === "string" ? detail : (detail?.message || "Request rejected.");
       node.innerHTML = `<div class="you">${esc(question)}</div>
@@ -251,7 +288,46 @@ async function send() {
       return;
     }
 
-    node.innerHTML = `<div class="you">${esc(question)}</div>` + renderAnswer(payload);
+    // Newline-delimited JSON: one event per line, read as it arrives.
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let payload = null;
+    let failure = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line);
+        if (event.stage === "done") { payload = event.result; continue; }
+        if (event.stage === "error") { failure = event.detail; continue; }
+        queued.push(describeStage(event));
+        pump();
+      }
+    }
+
+    if (failure) {
+      node.innerHTML = `<div class="you">${esc(question)}</div><div class="flag">${esc(failure)}</div>`;
+      return;
+    }
+    if (!payload) {
+      node.innerHTML = `<div class="you">${esc(question)}</div>
+        <div class="flag">The response ended before an answer arrived.</div>`;
+      return;
+    }
+
+    await settle();
+    node.innerHTML = `<div class="you">${esc(question)}</div>` + renderAnswer(payload, true);
+    const said = node.querySelector(".said");
+    const after = node.querySelector(".after-answer");
+    if (said) await reveal(said, payload.answer || "(no answer)");
+    if (after) after.classList.remove("hidden");
+
     // Only real exchanges become context. A clarifying question is kept too -
     // the user's reply to it will not make sense without it.
     history = history.concat([{ question, answer: payload.answer || "" }]).slice(-10);
@@ -266,14 +342,73 @@ async function send() {
   }
 }
 
-function renderAnswer(data) {
+// Labels are for the person waiting. Configuration - retrieval mode, top_k,
+// similarity scores, model and prompt version - is diagnostic, so it only
+// appears when "Show prompt and sources" is ticked.
+function describeStage(event) {
+  const technical = $("debug").checked;
+  switch (event.stage) {
+    case "understanding":
+      return { label: "Reading the conversation so far" };
+    case "understood":
+      return { label: "Understood as", detail: `"${event.question}"` };
+    case "retrieving":
+      return { label: "Searching the contracts", detail: technical ? `${event.mode}, top ${event.top_k}` : "" };
+    case "retrieved":
+      return {
+        label: `Found ${event.count} clauses in ${event.documents.length} agreement${event.documents.length === 1 ? "" : "s"}`,
+        detail: (event.top || []).map((t) => `${t.doc_title} ${t.section}`).join("  ·  "),
+      };
+    case "gate":
+      return event.passed
+        ? { label: "Checked the question is about these contracts", detail: technical ? String(event.score) : "" }
+        : { label: "Not a question about these contracts", detail: technical ? String(event.score) : "" };
+    case "masking":
+      return { label: "Masking personal data before it leaves the machine" };
+    case "generating":
+      return { label: "Drafting the answer", detail: technical ? `${event.model} · prompt ${event.prompt_version}` : "" };
+    case "verifying":
+      return { label: "Checking every citation against what was retrieved" };
+    default:
+      return { label: event.stage };
+  }
+}
+
+// The answer is already complete and verified when this runs - the reveal is
+// presentation, not streaming. Real token streaming would mean showing prose
+// before citation verification had run on it.
+async function reveal(element, text) {
+  if (REDUCED_MOTION) {
+    element.textContent = text;
+    return;
+  }
+  const parts = text.split(/(\s+)/);
+  const pace = parts.length > 500 ? 6 : parts.length > 200 ? 12 : 22;
+  let shown = "";
+  for (let i = 0; i < parts.length; i++) {
+    shown += parts[i];
+    element.textContent = shown;
+    if (i % 2 === 0) {
+      $("thread").scrollTop = $("thread").scrollHeight;
+      await sleep(pace);
+    }
+  }
+}
+
+function renderAnswer(data, animate) {
   let html = "";
 
-  if (data.standalone_question) {
+  // The rewritten question already appeared in the progress list.
+  if (data.standalone_question && !animate) {
     html += `<div class="searched">Understood as: "${esc(data.standalone_question)}"</div>`;
   }
 
-  html += `<div class="said${data.needs_clarification ? " asking" : ""}">${esc(data.answer)}</div>`;
+  html += `<div class="said${data.needs_clarification ? " asking" : ""}">`
+    + (animate ? "" : esc(data.answer)) + "</div>";
+
+  // Everything below the prose waits until the reveal has finished, so
+  // citations do not appear beside a half-written sentence.
+  html += `<div class="after-answer${animate ? " hidden" : ""}">`;
 
   const cites = data.citations || [];
   if (cites.length) {
@@ -310,7 +445,7 @@ function renderAnswer(data) {
     html += `<details><summary>Prompt sent to the model</summary><pre>${esc(data.debug.user_prompt)}</pre></details>`;
     html += `<details><summary>Raw reply</summary><pre>${esc(data.debug.raw_response)}</pre></details>`;
   }
-  return html;
+  return html + "</div>";
 }
 
 updateCount();

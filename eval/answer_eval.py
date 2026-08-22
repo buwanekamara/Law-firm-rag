@@ -34,7 +34,7 @@ from pathlib import Path
 
 from app.answer import answer_question
 from app.config import PROJECT_ROOT, settings
-from app.guards import (
+from app.safety.guards import (
     citation_matches,
     looks_like_refusal,
     marks_general_knowledge,
@@ -43,7 +43,7 @@ from app.guards import (
     reports_placeholder,
     reports_redaction,
 )
-from app.indexing import collection_size
+from app.search.indexing import collection_size
 
 # Every question whose right answer is "the contracts do not give you this",
 # in one of its four disguises. cross_reference belongs here: leaving it out

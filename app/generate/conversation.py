@@ -17,16 +17,17 @@ question.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from app.config import settings
-from app.llm import complete
-from app.prompting import render
+from app.generate.llm import complete
+from app.generate.prompting import render
 
 # Only the last few turns are carried. Older context stops helping and starts
-# dragging retrieval towards whatever was discussed earliest.
-MAX_TURNS = 6
+# dragging retrieval towards whatever was discussed earliest. HISTORY_TURNS.
+MAX_TURNS = settings.history_turns
 
 # Words that make a question depend on what came before.
 _DEPENDENT = re.compile(
@@ -45,7 +46,7 @@ class Turn:
     answer: str
 
     @classmethod
-    def from_payload(cls, payload: dict[str, Any]) -> "Turn":
+    def from_payload(cls, payload: dict[str, Any]) -> Turn:
         return cls(
             question=str(payload.get("question", ""))[:2000],
             answer=str(payload.get("answer", ""))[:4000],

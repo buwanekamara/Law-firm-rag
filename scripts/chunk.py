@@ -18,8 +18,8 @@ from collections import Counter, defaultdict
 from datetime import date
 from statistics import median
 
-from app.chunking import MAX_WORDS, OVERLAP_WORDS, chunk_all, citation_header
 from app.config import PROJECT_ROOT, settings
+from app.ingest.chunking import MAX_WORDS, OVERLAP_WORDS, chunk_all, citation_header
 
 INVENTORY_PATH = PROJECT_ROOT / "docs" / "chunk-inventory.md"
 
@@ -29,7 +29,7 @@ def print_table(chunks: list[dict]) -> None:
     for chunk in chunks:
         by_doc[chunk["doc_id"]].append(chunk)
 
-    for doc_id, doc_chunks in by_doc.items():
+    for doc_chunks in by_doc.values():
         print(f"\n{'=' * 96}\n{doc_chunks[0]['doc_title']}  ({len(doc_chunks)} chunks)\n{'=' * 96}")
         print(f"{'section':<14}{'pages':<9}{'words':>6}  heading")
         print("-" * 96)
@@ -115,7 +115,8 @@ def render_markdown(chunks: list[dict]) -> str:
         "| Hosting Agreement | inline numbers | `1. Website Design and Development. Client agrees...` |",
         "| Joint Venture Agreement | inline numbers | `3. Capital Contributions. Except as agreed...` |",
         "| Manufacturing Agreement | bare numbers, title on next line | `2.` then `PRODUCTION OF PRODUCT` |",
-        "| Trademark License Agreement | `Section N.M` plus coarse parents | `Section 4.3. Termination for Breach.` under `4. Termination.` |",
+        "| Trademark License Agreement | `Section N.M` plus coarse parents | "
+        "`Section 4.3. Termination for Breach.` under `4. Termination.` |",
         "| Transportation Agreement | Roman-numeral Articles | `Article VIII. Fees, Billing & Payment` |",
         "",
         "## Sections",
