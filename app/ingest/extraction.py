@@ -53,6 +53,11 @@ def derive_doc_meta(path: Path) -> tuple[str, str]:
 
     Returns ("manufacturing_agreement", "Manufacturing Agreement"). The title
     is what a citation shows; the id is what filters use.
+
+    This assumes the filename convention holds. Each contract also states its
+    own name on page one, so the title could be read from the text with the
+    filename as a fallback - at the cost of a heuristic that fails quietly on
+    a document that never announces itself.
     """
     candidate = path.stem.split("_")[-1].split("-")[-1]
     candidate = re.sub(r"\d+$", "", candidate).strip()  # "Agreement1" -> "Agreement"

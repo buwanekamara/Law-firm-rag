@@ -48,17 +48,23 @@ that does not match is removed before you see it.
 3. Check it worked: `uv run scripts/chunk.py` prints a table of every chunk.
    The section column should read like the contract's own table of contents.
 
-**Name the files carefully.** The title shown in citations comes from the last
-part of the filename, after the final `_` or `-`, so
-`Acme_2019_EX-10.1_Supply Agreement.pdf` is cited as "Supply Agreement".
-A file called `scan1.pdf` will be cited as "scan1".
+### Two assumptions worth knowing
 
-**Scanned PDFs will not work.** Text is read from the PDF's own text layer.
-A scanned image of a contract produces nothing to index.
+**Titles come from filenames.** These contracts are EDGAR filings, and their
+filenames end with the document's name, so the title in a citation is the last
+part of the filename after the final `_` or `-`:
+`Acme_2019_EX-10.1_Supply Agreement.pdf` is cited as "Supply Agreement". This
+is a convention rather than a property of the document. Reading the title off
+page one instead would remove the dependency, at the cost of a heuristic that
+fails quietly on a contract that never states its own name. Keep the naming
+pattern and the citations stay readable.
 
-One thing to change if you swap the corpus: the refusal message in
-`app/answer.py` names the five agreements out loud, so a question outside the
-corpus gets a useful reply rather than "nothing found". Edit `_SCOPE` there to
+**Text has to be text.** Extraction reads the PDF's own text layer, so a
+scanned image of a contract indexes as empty. Run it through OCR first.
+
+One thing to edit if you replace the corpus: `_SCOPE` in `app/answer.py` names
+the five agreements out loud, so a question about something else gets a reply
+that says what the system does cover instead of "nothing found". Change it to
 describe your own set.
 
 ---
