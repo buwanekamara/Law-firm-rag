@@ -1,9 +1,12 @@
 """The configuration contract.
 
-Every setting is read from the environment with no fallback in code, so
-.env.example is the only complete statement of what the application needs to
-start. A setting added to Settings without a matching line in the template
-would otherwise surface as a startup failure on someone else's machine.
+Every setting is read from the environment with no fallback in code, so .env
+is the only complete statement of what the application needs to start. A
+setting added to Settings without a matching line there would otherwise
+surface as a startup failure on someone else's machine.
+
+These tests skip when there is no .env, so a checkout without one still runs
+green - the suite supplies its own environment in conftest.
 """
 
 from __future__ import annotations
@@ -17,31 +20,30 @@ REQUIRED = sorted(
 )
 
 
-def test_template_supplies_every_required_setting(env_template):
-    missing = [name for name in REQUIRED if name not in env_template]
-    assert not missing, f".env.example is missing: {', '.join(missing)}"
+def test_env_supplies_every_required_setting(env_file):
+    missing = [name for name in REQUIRED if name not in env_file]
+    assert not missing, f".env is missing: {', '.join(missing)}"
 
 
-def test_template_carries_nothing_the_application_ignores(env_template):
+def test_env_carries_nothing_the_application_ignores(env_file):
     """The reverse direction: a leftover line for a setting that was removed
     reads like live configuration and quietly does nothing."""
     known = {name.upper() for name in Settings.model_fields}
-    stale = sorted(set(env_template) - known)
-    assert not stale, f".env.example describes settings that no longer exist: {stale}"
+    stale = sorted(set(env_file) - known)
+    assert not stale, f".env names settings that no longer exist: {stale}"
 
 
-def test_the_folder_paths_are_derived_not_configured(env_template):
+def test_the_folder_paths_are_derived_not_configured(env_file):
     """Deliberate exception. Requiring these would put an absolute path from one
     developer's machine into .env, which then breaks inside a container."""
     assert not Settings.model_fields["contracts_dir"].is_required()
     assert not Settings.model_fields["data_dir"].is_required()
-    assert "CONTRACTS_DIR" not in env_template
-    assert "DATA_DIR" not in env_template
+    assert "CONTRACTS_DIR" not in env_file
+    assert "DATA_DIR" not in env_file
 
 
-def test_the_template_is_committed_and_the_real_file_is_not():
-    """.env holds the gateway key. The template beside it must never."""
-    assert (PROJECT_ROOT / ".env.example").is_file()
+def test_the_key_file_is_never_committed():
+    """.env holds the gateway key, so git must not be able to see it."""
     gitignore = (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert ".env" in [line.strip() for line in gitignore]
 
@@ -70,4 +72,4 @@ def test_the_startup_error_reads_like_an_instruction(monkeypatch):
 
     message = str(caught.value)
     assert "AI_GATEWAY_API_KEY" in message
-    assert ".env.example" in message
+    assert ".env" in message

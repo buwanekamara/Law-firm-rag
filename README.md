@@ -1,4 +1,4 @@
-# Contract RAG
+# Contract RAG (dydx)
 
 Ask questions about a folder of contracts and get answers that cite the exact
 section they came from. When the contracts do not say, it says so instead of
@@ -28,6 +28,7 @@ that does not match is removed before you see it.
 - [Install with pip](#install-with-pip)
 - [Using it](#using-it)
 - [Settings](#settings)
+- [Turning on personal-data masking](#turning-on-personal-data-masking)
 - [What each file does](#what-each-file-does)
 
 ---
@@ -74,7 +75,6 @@ describe your own set.
 The shortest path. Needs Docker and an AI Gateway key.
 
 ```bash
-cp .env.example .env      # Windows: copy .env.example .env
 # open .env and paste your key into AI_GATEWAY_API_KEY
 
 docker compose up --build
@@ -102,7 +102,7 @@ Needs Python 3.12.
 
 ```bash
 uv sync
-cp .env.example .env      # then paste your key in
+# open .env and paste your key into AI_GATEWAY_API_KEY
 
 docker compose up -d qdrant      # the search engine
 uv run scripts/extract.py
@@ -130,7 +130,7 @@ python -m venv .venv
 .venv\Scripts\activate            # macOS, Linux:  source .venv/bin/activate
 
 pip install -e .
-cp .env.example .env               # then paste your key in
+# open .env and paste your key into AI_GATEWAY_API_KEY
 
 docker compose up -d qdrant        # or set QDRANT_PATH as above
 python scripts/extract.py
@@ -199,8 +199,8 @@ uv run scripts/search.py "force majeure" --k 10     # retrieval only, no model
 Everything is configured through `.env`. There are no fallback values in the
 code, so a missing variable stops startup with a message naming it.
 
-`.env.example` is the full list. Each entry says what it accepts and what
-changes when you change it. The ones people usually touch:
+`.env` is the full list. Each entry says what it accepts and what changes when
+you change it. The ones people usually touch:
 
 | Variable | Options | What it does |
 |---|---|---|
@@ -224,6 +224,77 @@ uv run scripts/chunk.py --sizes          # what a chunking change did
 ```
 
 `docs/` holds the results of those runs and the reasoning behind each setting.
+
+---
+
+## Turning on personal-data masking
+
+Names, email addresses and phone numbers can be replaced with placeholders
+before any contract text is sent to the model, and put back in the answer
+afterwards. The model reasons about `PERSON_1`; you read the real name.
+
+It ships **off**, because it needs a language model that is too large to
+include by default, and because everything else in the pipeline already runs
+locally — the call to the gateway is the only moment contract text leaves the
+machine, which is the only place masking would help.
+
+**With uv**
+
+```bash
+uv run python -m spacy download en_core_web_lg     # ~560MB, once
+```
+
+Then set `MASKING_ENABLED=true` in `.env` and restart.
+
+**With pip**
+
+```bash
+python -m spacy download en_core_web_lg
+```
+
+Then the same: `MASKING_ENABLED=true` in `.env`, restart. The detection
+library itself is already a dependency; only the language model is separate.
+
+**With Docker** the model has to go into the image, so rebuild with the flag:
+
+```bash
+INSTALL_MASKING=true docker compose build
+docker compose up
+```
+
+Set `MASKING_ENABLED=true` in `.env` as well — the flag only puts the model in
+the image, it does not switch masking on.
+
+### Checking what it would do
+
+Before turning it on anywhere, see what it catches:
+
+```bash
+uv run scripts/mask.py "Notices go to smoore@penntex.com for Natalija Tunevic"
+uv run scripts/mask.py --corpus      # scan every indexed chunk
+uv run scripts/mask.py --terms       # the terms it refuses to mask
+```
+
+With masking on, every answer carries a note saying what was masked, and
+`?debug=true` shows the prompt exactly as it was sent — placeholders included.
+
+### What it deliberately leaves alone
+
+Dates, places and company names are **not** masked. In this corpus that is 145
+dates and 122 locations, and removing them would take the answer to "when does
+this take effect" and "which state's law governs" with them. Terms the contract
+defines in quotation marks — `("Heritage")`, `("Transporter")` — are protected
+too: they look like personal names to a detector, and masking them makes the
+contract unanswerable.
+
+If a name still gets through, or something gets masked that should not, the
+threshold is `MASKING_MIN_CONFIDENCE`. Lower it to catch more and risk false
+positives; raise it to be stricter. `scripts/mask.py --corpus` shows the effect
+across the whole corpus in one run.
+
+**If you forget the language model** and switch masking on anyway, the first
+question fails with a message telling you which command to run. Nothing is
+sent unmasked as a fallback.
 
 ---
 
@@ -278,8 +349,8 @@ and every other module is a step in it.
 
 ## If something goes wrong
 
-**"Configuration is incomplete"** — a variable from `.env.example` is missing
-from your `.env`. The message names it.
+**"Configuration is incomplete"** — a variable is missing from `.env`. The
+message names which one.
 
 **503, "No chunks are indexed"** — the ingest scripts have not been run, or
 were run against a different search engine than the one the service is using.

@@ -1,4 +1,4 @@
-# copy .env.example .env      then add your gateway key
+# Put your gateway key in .env, then:
 # docker compose up --build
 #
 # Qdrant starts, ingest builds the index and exits, then the API starts.

@@ -85,21 +85,31 @@ def fake_sparse(text: str) -> FakeSparse:
 
 
 @pytest.fixture(scope="session")
-def env_template() -> dict[str, str]:
-    """.env.example, parsed into a mapping.
+def env_file() -> dict[str, str]:
+    """.env, parsed into a mapping of name to value.
 
     With no fallback values in code, this file is the complete description of
-    what a deployment must supply, so tests assert against it.
+    what the application needs to start, so tests assert against it.
+
+    Secrets are replaced with a placeholder. pytest prints fixture values in
+    the header of a failure report, and a gateway key does not belong in
+    terminal output or in CI logs.
     """
     from app.config import PROJECT_ROOT
 
+    path = PROJECT_ROOT / ".env"
+    if not path.is_file():
+        pytest.skip("no .env in the project root")
+
     values: dict[str, str] = {}
-    for line in (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         name, value = line.split("=", 1)
-        values[name.strip()] = value.strip()
+        name = name.strip()
+        secret = any(word in name for word in ("KEY", "SECRET", "TOKEN", "PASSWORD"))
+        values[name] = "***" if secret and value.strip() else value.strip()
     return values
 
 

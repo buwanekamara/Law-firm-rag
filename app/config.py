@@ -121,9 +121,8 @@ def get_settings() -> Settings:
             "Configuration is incomplete. These environment variables are not "
             "set:\n  " + "\n  ".join(missing) + "\n\n"
             "Every setting is read from the environment; the code holds no "
-            "fallback values. Copy the template and fill it in:\n"
-            "  copy .env.example .env        (Windows)\n"
-            "  cp .env.example .env          (macOS, Linux)"
+            "fallback values. Add the missing lines to the .env file in the "
+            "project root, or set them in the environment."
         ) from None
 
 

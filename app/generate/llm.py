@@ -24,7 +24,7 @@ class MissingApiKey(RuntimeError):
 def get_client() -> OpenAI:
     if not settings.ai_gateway_api_key:
         raise MissingApiKey(
-            "AI_GATEWAY_API_KEY is not set. Copy .env.example to .env and paste the key in."
+            "AI_GATEWAY_API_KEY is not set. Paste your gateway key into .env."
         )
     return OpenAI(
         api_key=settings.ai_gateway_api_key,
