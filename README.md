@@ -1,4 +1,6 @@
-# Contract RAG (dydx)
+# Contract RAG 
+
+## Take-home assessment for dxdy — Associate AI Engineer.
 
 Ask questions about a folder of contracts and get answers that cite the exact
 section they came from. When the contracts do not say, it says so instead of
@@ -30,6 +32,7 @@ that does not match is removed before you see it.
 - [Settings](#settings)
 - [Turning on personal-data masking](#turning-on-personal-data-masking)
 - [What each file does](#what-each-file-does)
+- [If something goes wrong](#if-something-goes-wrong)
 
 ---
 
@@ -74,13 +77,24 @@ describe your own set.
 
 The shortest path. Needs Docker and an AI Gateway key.
 
+Use `docker compose` — two words. The config file is named `compose.yml`, per
+the Compose Specification, which the older standalone `docker-compose` command
+does not look for.
+
 ```bash
+cp .env.example .env      # Windows: copy .env.example .env
 # open .env and paste your key into AI_GATEWAY_API_KEY
 
 docker compose up --build
 ```
 
 Then open **http://localhost:8000**.
+
+> Your terminal or editor may print a line like `Uvicorn running on
+> http://0.0.0.0:8000` and turn it into a clickable link. Don't click it —
+> `0.0.0.0` means "accept connections from anywhere," it isn't a real address
+> a browser can open, so it fails with an address error. Use
+> `http://localhost:8000` instead.
 
 The first build takes a few minutes: it installs dependencies and bakes the
 embedding models into the image. After that, startup is seconds. Three things
@@ -102,7 +116,7 @@ Needs Python 3.12.
 
 ```bash
 uv sync
-# open .env and paste your key into AI_GATEWAY_API_KEY
+cp .env.example .env      # then paste your key in
 
 docker compose up -d qdrant      # the search engine
 uv run scripts/extract.py
@@ -130,7 +144,7 @@ python -m venv .venv
 .venv\Scripts\activate            # macOS, Linux:  source .venv/bin/activate
 
 pip install -e .
-# open .env and paste your key into AI_GATEWAY_API_KEY
+cp .env.example .env               # then paste your key in
 
 docker compose up -d qdrant        # or set QDRANT_PATH as above
 python scripts/extract.py
@@ -349,8 +363,17 @@ and every other module is a step in it.
 
 ## If something goes wrong
 
-**"Configuration is incomplete"** — a variable is missing from `.env`. The
-message names which one.
+**"Configuration is incomplete"** — a variable is missing from `.env`, or
+`.env` doesn't exist yet. Create it from the template and fill in your key:
+
+```bash
+cp .env.example .env      # Windows: copy .env.example .env
+```
+
+The message names which variable is still missing.
+
+**Page won't load at `http://0.0.0.0:8000`** — that address is a listening
+instruction, not a real one to visit. Use `http://localhost:8000`.
 
 **503, "No chunks are indexed"** — the ingest scripts have not been run, or
 were run against a different search engine than the one the service is using.

@@ -6,6 +6,7 @@ dist/
 wheels/
 *.egg-info
 
+# Contract PDFs are not committed - the folder is, via contracts/.gitkeep.
 *.pdf
 
 # Virtual environments
