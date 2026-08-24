@@ -1,6 +1,6 @@
 """Tests for the checks that sit around the model.
 
-Phase 5 uses these for evaluation; phase 6 puts them in the answer path.
+Used both by the evaluation and by the answer path.
 """
 
 import pytest
@@ -41,7 +41,7 @@ def test_kind_is_kept_so_article_x_is_not_exhibit_x():
 
 
 def test_bare_identifier_still_matches():
-    """The model often writes "4.2" where we wrote "Section 4.2"."""
+    """The model often writes "4.2" where the chunk says "Section 4.2"."""
     assert citation_matches({"section": "4.2"}, {"section_label": "Section 4.2"})
 
 
@@ -106,17 +106,17 @@ def test_redaction_and_placeholder_language_is_recognised():
 
 
 def test_echoing_the_marker_is_not_explaining_it():
-    """v1 answered "the effective date is the [·] day of [·], 2019" - which
-    reads as a date and could be copied into a document as one. Showing the
-    marker is not the same as telling the reader the field was never filled
-    in, so the explanation is what gets matched, not the symbol."""
+    """An answer that repeats "the [·] day of [·], 2019" reads as a date and
+    could be copied into a document as one. Showing the marker is not the same
+    as saying the field was never filled in, so the explanation is what these
+    match, not the symbol."""
     assert not reports_placeholder("The effective date is the [·] day of [·], 2019.")
     assert not reports_redaction("The amount is [***] under Schedule C.")
 
 
 def test_saying_nothing_is_not_reporting_a_redaction():
-    """The exact failure v1 made: 'not specified' is a different claim from
-    'redacted', and only one of them is true."""
+    """'Not specified' is a different claim from 'redacted', and only one of
+    them is true of a value that was withheld."""
     assert not reports_redaction("The excerpts do not specify the price per unit.")
 
 
@@ -140,11 +140,10 @@ def test_v2_keeps_the_placeholders():
 
 
 def test_target_without_a_document_title_still_matches():
-    """Regression: tolerance for a missing title has to work on both sides.
+    """Tolerance for a missing title has to work on both sides.
 
-    When it worked on only one, the answer evaluation compared real citations
-    against a title-less target and reported nineteen correct answers as
-    uncited.
+    Answer-key targets often carry only a section label, so a citation that
+    names its document must still match one that does not.
     """
     assert citation_matches(
         {"doc_title": "Manufacturing Agreement", "section": "Section 12"},
@@ -153,9 +152,8 @@ def test_target_without_a_document_title_still_matches():
 
 
 def test_do_not_specify_is_a_refusal():
-    """Regression: the refusal vocabulary and the not-stated vocabulary were
-    separate lists, so "the excerpts do not specify who owns the content" -
-    a perfectly good refusal - was scored as a failure to refuse."""
+    """"Do not specify" is a refusal. The refusal and not-stated checks share
+    one vocabulary so that both agree on phrasings like this."""
     assert looks_like_refusal("The provided excerpts do not specify who owns the material.")
     assert looks_like_refusal("It is unclear based on the provided information.")
 
@@ -179,8 +177,7 @@ def test_judge_prompt_renders_both_slots():
 
 def test_judge_prompt_covers_the_refusal_and_marker_cases():
     """A refusal is a claim too: "the excerpts do not contain X" is supported
-    when X genuinely is not there. Without this the judge marks every correct
-    refusal as unfaithful."""
+    when X genuinely is not there, and the judge has to treat it that way."""
     from app.generate.prompting import load_named_prompt
 
     system, _ = load_named_prompt("judge_v1")
@@ -197,7 +194,7 @@ def test_v4_requires_the_document_name_in_the_prose():
 
 
 def test_v4_keeps_everything_v3_added():
-    """v4 is v3 plus one rule - the trap handling must survive."""
+    """v4 adds a rule to v3; the trap handling has to survive it."""
     system, _ = load_prompt("v4")
     assert "Citations are required whenever" in system
     assert "defers the substance elsewhere" in system
@@ -215,10 +212,9 @@ def test_v4_keeps_everything_v3_added():
     ],
 )
 def test_negation_survives_an_adverb(text):
-    """Regression: matching literal substrings meant "does not explicitly
-    state" contained neither "does not state" nor "not stated", so a correct
-    answer was scored as a failure to refuse. Up to two words may now sit
-    between the negation and the verb."""
+    """Models put adverbs inside the negation: "does not explicitly state"
+    contains neither "does not state" nor "not stated". Up to two words may
+    sit between the negation and the verb."""
     assert looks_like_refusal(text)
 
 

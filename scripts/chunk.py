@@ -1,4 +1,4 @@
-"""Debug CLI for phase 2.
+"""Debug CLI: text -> clause-aware chunks.
 
     uv run scripts/chunk.py                      # chunk everything
     uv run scripts/chunk.py --doc trademark      # one document
@@ -6,9 +6,9 @@
     uv run scripts/chunk.py --show "Section 4.3" # print one chunk in full
     uv run scripts/chunk.py --md                 # regenerate docs/chunk-inventory.md
 
-The table is the point: read down the section column and it should look like
-the contract's own table of contents. A missing number or a 3000-word chunk
-means a heading pattern was missed.
+The table is the point: the section column should read like the contract's
+own table of contents. A missing number or a 3000-word chunk means a heading
+pattern was missed.
 """
 
 from __future__ import annotations
@@ -65,8 +65,7 @@ def page_range(chunk: dict) -> str:
 def render_markdown(chunks: list[dict]) -> str:
     """Build the chunk inventory document.
 
-    Generated rather than hand-written, so it cannot quietly disagree with
-    what the chunker actually produces.
+    Generated, so it cannot quietly disagree with what the chunker produces.
     """
     by_doc: dict[str, list[dict]] = defaultdict(list)
     for chunk in chunks:

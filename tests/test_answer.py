@@ -1,4 +1,4 @@
-"""Phase 4 tests.
+"""Pipeline tests.
 
 No network. The model call is replaced with a stub, because what is being
 tested is the plumbing around it: what goes into the prompt, what comes back
@@ -158,8 +158,8 @@ def test_debug_is_absent_unless_requested(indexed_client, stub_llm):
 
 
 def test_invented_citations_do_not_reach_the_caller(indexed_client, stub_llm, monkeypatch):
-    """Phase 4 reported whatever the model claimed. Phase 6 verifies it, so
-    the same reply now yields no citations and a warning instead."""
+    """A citation naming a section nobody supplied is dropped, with a
+    warning, rather than shown."""
     from app.config import settings
 
     monkeypatch.setattr(settings, "citation_retry", False)
@@ -194,9 +194,8 @@ def test_empty_question_is_rejected_before_anything_expensive():
 def test_unknown_doc_id_is_rejected(monkeypatch):
     """An unrecognised filter is an error, not an empty answer.
 
-    The interactive docs page pre-fills optional strings with the word
-    "string"; before this check that produced a confident "no relevant clause
-    was found", which reads like a corpus problem rather than a typo.
+    /docs pre-fills optional strings with the word "string". Refusing because
+    of that reads like a corpus problem rather than a typo.
     """
     import app.api as api
 

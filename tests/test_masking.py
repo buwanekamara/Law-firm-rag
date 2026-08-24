@@ -1,4 +1,4 @@
-"""Phase 6.5 - PII masking.
+"""PII masking.
 
 Skipped when presidio is not installed, because masking is an optional
 capability: the system runs without it and says so if it is switched on

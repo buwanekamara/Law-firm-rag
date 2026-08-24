@@ -88,9 +88,8 @@ def fake_sparse(text: str) -> FakeSparse:
 def env_template() -> dict[str, str]:
     """.env.example, parsed into a mapping.
 
-    With no fallback values in code, this file is not documentation - it is
-    the complete description of what a deployment must supply, and the values
-    a deployment starts from. Tests assert against it for that reason.
+    With no fallback values in code, this file is the complete description of
+    what a deployment must supply, so tests assert against it.
     """
     from app.config import PROJECT_ROOT
 
@@ -108,11 +107,9 @@ def env_template() -> dict[str, str]:
 def hermetic_settings():
     """Run the suite against known settings, not the developer's .env.
 
-    Found the hard way: a local MIN_SCORE=0.56 made the relevance gate fire in
-    every test, because the stand-in embedder below produces similarities
-    around 0.11. Ten tests failed on one machine and passed on another. A test
-    that depends on someone's local configuration is not a test, so the
-    values that change behaviour are pinned here and restored afterwards.
+    A test that depends on someone's local configuration is not a test. The
+    stand-in embedder above produces similarities around 0.11, so a real
+    MIN_SCORE would make the relevance gate fire in every test.
 
     Individual tests still override these with monkeypatch when the setting is
     what they are testing.

@@ -1,17 +1,12 @@
-"""Multi-turn conversation support.
+"""Multi-turn support.
 
-Nothing is stored. The client sends the previous turns with each request and
-gets an answer back - so there is no database, no session table and no state on
-the server to keep consistent. For a tool answering questions about a fixed
-corpus that is the whole requirement, and it means two browser tabs cannot
-tread on each other.
+Nothing is stored: the client posts its previous turns with each request, so
+there is no session state on the server.
 
-The hard part of multi-turn retrieval is not memory, it is that follow-ups stop
-being searchable. "What about the other one?" contains no term worth embedding
-and no keyword worth matching. So before retrieval runs, a dependent follow-up
-is rewritten into a question that stands on its own, using the conversation as
-context. Everything downstream then works exactly as it does for a single
-question.
+The hard part is not memory, it is that follow-ups stop being searchable -
+"what about the other one?" has nothing worth embedding or matching. Dependent
+follow-ups are rewritten into standalone questions before retrieval runs;
+everything downstream then behaves as it does for a single question.
 """
 
 from __future__ import annotations
@@ -25,8 +20,7 @@ from app.config import settings
 from app.generate.llm import complete
 from app.generate.prompting import render
 
-# Only the last few turns are carried. Older context stops helping and starts
-# dragging retrieval towards whatever was discussed earliest. HISTORY_TURNS.
+# Older context drags retrieval back towards whatever was discussed first.
 MAX_TURNS = settings.history_turns
 
 # Words that make a question depend on what came before.
@@ -67,9 +61,8 @@ def render_history(history: list[Turn]) -> str:
 def depends_on_history(question: str, history: list[Turn]) -> bool:
     """Cheap test for whether rewriting is worth a model call.
 
-    Most follow-ups are self-contained ("what about confidentiality?") and
-    rewriting them wastes a call and a second of latency. Only questions that
-    are very short, or that point at something with a pronoun, need it.
+    Most follow-ups stand on their own; only very short ones, or ones pointing
+    at something with a pronoun, need the rewrite.
     """
     if not history:
         return False
@@ -89,8 +82,7 @@ def condense(question: str, history: list[Turn]) -> str:
     try:
         rewritten = complete(system, user, temperature=settings.llm_temperature).strip()
     except Exception:
-        # A failed rewrite must not fail the request; the original question is
-        # a worse search but still a search.
+        # A failed rewrite is a worse search, not a failed request.
         return question
 
     rewritten = rewritten.strip('"').strip()

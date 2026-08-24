@@ -1,4 +1,4 @@
-"""Phase 6 - the guards in the answer path.
+"""The guards in the answer path.
 
 These test what happens *around* the model: refusing before it is called, and
 refusing to publish a citation it made up.
@@ -45,11 +45,10 @@ def stub_llm(monkeypatch):
 # --- guard one: the relevance gate ----------------------------------------
 
 def test_the_gate_threshold_is_configuration_not_a_code_default(env_template):
-    """There is no threshold worth baking into the code. 0 lets every question
-    through; a guessed value refuses real ones. So the setting is required, and
-    the shipped template carries the value scripts/calibrate_gate.py measured on
-    this corpus - off-topic queries top out at 0.55, the weakest genuine
-    question scores 0.63. See docs/retrieval-eval.md."""
+    """No threshold is worth baking into the code: 0 lets every question
+    through and a guessed value refuses real ones. The setting is required, and
+    the template carries the value scripts/calibrate_gate.py produces for this
+    corpus - off-topic queries reach 0.55, the weakest real question 0.63."""
     from app.config import Settings
 
     assert Settings.model_fields["min_score"].is_required()

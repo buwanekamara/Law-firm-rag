@@ -1,11 +1,11 @@
-"""Debug CLI for phase 6.5 - see exactly what masking would remove.
+"""Debug CLI: see exactly what masking would remove.
 
     uv run scripts/mask.py "Notices to smoore@penntex.com for Natalija Tunevic"
     uv run scripts/mask.py --corpus          # scan the indexed chunks
     uv run scripts/mask.py --terms           # show the protected defined terms
 
-Masking is confusing to debug from inside an answer, which is why it has its
-own switch (MASKING_ENABLED) and its own script.
+Masking is hard to debug from inside an answer, hence its own switch
+(MASKING_ENABLED) and its own script.
 """
 
 from __future__ import annotations

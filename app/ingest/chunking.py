@@ -1,16 +1,13 @@
-"""Phase 2 - clause-aware chunking.
+"""Clause-aware chunking.
 
-A chunk is a contract section, not a fixed-size window of characters. That
-choice is forced by the requirement to cite "the specific section": if a chunk
-straddles two clauses, there is no honest section number to put on it.
+A chunk is a contract section, not a fixed window of characters: a chunk
+straddling two clauses has no honest section number to cite.
 
-The hard part is that these five contracts number their sections five
-different ways, and the same pattern means different things in different
-documents. A bare "1." on its own line is a section heading in the
-manufacturing agreement (it has twenty of them, running 1 to 21) and an
-ordinary list item in the transportation agreement (it has exactly two, buried
-inside Article IV). So rather than one regex set applied everywhere, each
-document is inspected first and told which heading style it uses.
+The hard part is that the five contracts number their sections five different
+ways, and the same pattern means different things in different documents. A
+bare "1." is a heading in the manufacturing agreement (twenty of them) and a
+list item in the transportation agreement (exactly two, inside Article IV). So
+each document is inspected first and told which style it uses.
 """
 
 from __future__ import annotations
@@ -23,18 +20,14 @@ from typing import Any
 from app.config import settings
 from app.ingest.extraction import load_document
 
-# How large a chunk may get before it is split, measured in words.
-# The embedding model (bge-small-en-v1.5) accepts 512 tokens, and English
-# prose runs roughly 1.3 tokens per word, so 350 words leaves headroom rather
-# than silently having the tail of a clause truncated at embedding time.
-# CHUNK_MAX_WORDS / CHUNK_OVERLAP_WORDS. Changing either means the stored
-# chunks no longer match the configuration: re-run extract, chunk and index.
+# Max chunk size in words. bge-small takes 512 tokens at roughly 1.3 tokens
+# per word, so 350 leaves headroom instead of truncating a clause silently.
+# Changing either means re-running extract, chunk and index.
 MAX_WORDS = settings.chunk_max_words
 OVERLAP_WORDS = settings.chunk_overlap_words
 
-# A style must produce at least this many headings to be believed. It is what
-# separates "this document is organised in numbered sections" from "this
-# document happens to contain a numbered list".
+# Headings a style must produce to be believed. Separates "organised in
+# numbered sections" from "happens to contain a numbered list".
 MIN_HEADINGS = 4
 
 
@@ -43,8 +36,7 @@ class Style:
     name: str
     pattern: re.Pattern[str]
     level: int
-    # True when the heading text sits on the line *after* the number, as in
-    # the manufacturing agreement's "2." / "PRODUCTION OF PRODUCT".
+    # Heading text on the line after the number: "2." / "PRODUCTION OF PRODUCT".
     title_on_next_line: bool = False
 
 
@@ -55,17 +47,14 @@ STYLES: tuple[Style, ...] = (
     Style("section_numeric", re.compile(r"^Section\s+(\d+(?:\.\d+)*)\.?\s*(.*)$"), level=2),
 )
 
-# Exhibits and schedules are appendices, so they only count as headings when
-# they appear after the body of the contract has finished. The manufacturing
-# agreement mentions "Schedule C" on a line of its own inside section 1, in a
-# table of basic terms - treating that as the start of an appendix would throw
-# away the twenty sections that follow it.
+# Appendices only count as headings once the body is finished. "Schedule C"
+# appears on its own line inside section 1 of the manufacturing agreement;
+# treating that as an appendix would discard the twenty sections after it.
 EXHIBIT_PATTERN = re.compile(r"^(EXHIBIT|Exhibit|SCHEDULE|Schedule|ANNEX|Annex)\s+([A-Z0-9]{1,3})\.?$")
 
 
-# The end of a heading title: a full stop followed by a space, where the stop
-# is not part of a number like "6.1". "Payment Terms. Upon the signing of..."
-# yields "Payment Terms".
+# End of a heading title: a stop then a space, not part of a number like
+# "6.1". "Payment Terms. Upon the signing of..." -> "Payment Terms".
 _TITLE_END = re.compile(r"(?<=[^\d])\.\s")
 
 
@@ -126,12 +115,11 @@ def flatten_pages(document: dict[str, Any]) -> list[Line]:
 
 
 def detect_styles(lines: list[Line]) -> list[Style]:
-    """Decide which heading styles this particular document actually uses.
+    """Decide which heading styles this document actually uses.
 
-    A style qualifies when it fires at least MIN_HEADINGS times. That single
-    threshold is what stops the transportation agreement's two stray list
-    items ("1.", "2.") from being mistaken for the section scheme of a
-    document that is plainly organised into fifteen Articles.
+    A style qualifies at MIN_HEADINGS hits. That threshold is what stops two
+    stray list items being read as the scheme of a document organised into
+    fifteen Articles.
     """
     qualifying = []
     for style in STYLES:
@@ -140,9 +128,8 @@ def detect_styles(lines: list[Line]) -> list[Style]:
             qualifying.append(style)
 
     # The trademark licence has both "4. Termination." and "Section 4.3.
-    # Termination for Breach." - keep both, the coarse one becomes the parent
-    # heading of the fine one. But never let the coarse numbered styles fight
-    # each other.
+    # Termination for Breach." - keep both, coarse becomes the parent. But the
+    # two coarse numbered styles must not fight each other.
     if any(s.name == "numbered_bare" for s in qualifying) and any(
         s.name == "numbered_inline" for s in qualifying
     ):
@@ -153,12 +140,9 @@ def detect_styles(lines: list[Line]) -> list[Style]:
 def find_exhibit_start(lines: list[Line], body_headings: list[Heading]) -> int | None:
     """Index of the line where the appendices begin, if they do.
 
-    An "Exhibit A" line only starts the appendices when the body of the
-    contract has already been laid out above it - measured as at least
-    MIN_HEADINGS numbered sections preceding it. That is what distinguishes
-    the hosting agreement's real Exhibit A (four sections above it) from the
-    manufacturing agreement's "Schedule C", which is a row in a table inside
-    section 1 with only one heading above it.
+    "Exhibit A" only starts them with at least MIN_HEADINGS sections above it.
+    That separates the hosting agreement's real Exhibit A (four above) from
+    "Schedule C", a table row inside section 1 with one heading above.
     """
     for index, line in enumerate(lines):
         if not EXHIBIT_PATTERN.match(line.text):
@@ -234,9 +218,8 @@ def find_headings(lines: list[Line], styles: list[Style]) -> list[Heading]:
 def build_sections(lines: list[Line], headings: list[Heading]) -> list[Section]:
     """Slice the document into sections, one per heading.
 
-    Text before the first heading becomes the preamble - in these contracts
-    that is the parties clause and the WHEREAS recitals, which are genuinely
-    quotable, so they get a section of their own rather than being dropped.
+    Text before the first heading becomes the preamble - the parties clause
+    and the recitals, which are quotable, so they get a section of their own.
     """
     sections: list[Section] = []
     if not headings:
@@ -257,10 +240,9 @@ def build_sections(lines: list[Line], headings: list[Heading]) -> list[Section]:
             )
         )
 
-    # A heading whose body is empty is a group title: "1. Grant of Rights;
-    # Sublicensing." immediately followed by "Section 1.1. License Grant."
-    # Rather than emit an empty chunk, hand it down as the parent of the
-    # sections beneath it.
+    # An empty body means a group title - "1. Grant of Rights; Sublicensing."
+    # followed by "Section 1.1. License Grant." Hand it down as the parent
+    # rather than emitting an empty chunk.
     collapsed: list[Section] = []
     pending_parent: Heading | None = None
     for section in sections:
@@ -283,10 +265,9 @@ def build_sections(lines: list[Line], headings: list[Heading]) -> list[Section]:
 
 
 def split_by_size(lines: list[Line]) -> list[list[Line]]:
-    """Split an over-long section, keeping whole lines and overlapping a little.
+    """Split an over-long section on whole lines, with a little overlap.
 
-    The overlap exists so a sentence that happens to land on a split boundary
-    is still readable in at least one of the two pieces.
+    The overlap keeps a sentence landing on a boundary readable in one piece.
     """
     total_words = sum(len(line.text.split()) for line in lines)
     if total_words <= MAX_WORDS:

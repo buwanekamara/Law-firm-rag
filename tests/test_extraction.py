@@ -1,4 +1,4 @@
-"""Phase 1 tests - run against the real PDFs, because the cleaning rules only
+"""Extraction tests - run against the real PDFs, because the cleaning rules only
 matter in relation to what is actually inside these files.
 """
 

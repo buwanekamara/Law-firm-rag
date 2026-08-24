@@ -1,18 +1,12 @@
-"""Phase 1 - PDF text extraction.
+"""PDF text extraction.
 
-Turns each contract PDF into a JSON file of cleaned, per-page text. Page
-numbers survive the trip because every citation the system produces later has
-to name a page, and a page number invented after the fact is worthless.
+Each contract becomes a JSON file of cleaned, per-page text. Page numbers
+survive because every citation has to name one.
 
-Two rules govern the cleaning:
-
-1. Fix what the PDF layer broke - words split across lines, non-breaking
-   spaces, running headers and footers that repeat on every page.
-2. Never "fix" the contract itself. Redaction markers ([***]) and placeholder
-   dates ([.]) are real content: they are how the system knows a value was
-   withheld rather than absent. Cleaning them away would hand the model a
-   silent gap to fill in, which is exactly the hallucination we are trying to
-   prevent.
+Two cleaning rules: fix what the PDF layer broke (split words, exotic spaces,
+running headers), and never "fix" the contract itself. Redaction markers
+([***]) and placeholder dates are real content - removing them would hand the
+model a silent gap to fill in.
 """
 
 from __future__ import annotations
@@ -32,38 +26,33 @@ from app.config import list_contracts, settings
 REDACTION_MARKER = "[***]"
 PLACEHOLDER_MARKER = "[·]"
 
-# These PDFs use non-breaking and typographic spaces instead of plain ones -
-# two of the five are made almost entirely of them. Left alone, "Article\xa0V"
-# never matches a search for "Article V".
+# Two of the five PDFs are made almost entirely of non-breaking spaces. Left
+# alone, "Article\xa0V" never matches a search for "Article V".
 _UNICODE_SPACES = "       ⁠﻿"  # noqa: RUF001 - lookalike spaces are the point
 
-# EDGAR stamps this on the bottom of every page of a filed exhibit. It is not
-# part of the contract, and repeated 20 times it pollutes retrieval.
+# EDGAR stamps this on every page of a filed exhibit. Repeated 20 times it
+# pollutes retrieval.
 _EDGAR_FOOTER = re.compile(r"^Source:\s+.+,\s+.+,\s+\d{1,2}/\d{1,2}/\d{4}\s*$")
 
 # A line holding nothing but a page number, optionally dashed: 4, -4-, - 4 -.
 _PAGE_NUMBER = re.compile(r"^[-–—]?\s*\d{1,3}\s*[-–—]?$")  # noqa: RUF001 - en dashes appear in the PDFs
 
-# A word broken across a line break: "indemni-\nfication" -> "indemnification".
-# Restricted to lowercase on both sides so hyphenated proper nouns and
-# constructions like "third-\nParty" are left alone.
+# "indemni-\nfication" -> "indemnification". Lowercase both sides, so
+# hyphenated proper nouns like "third-\nParty" are left alone.
 _HYPHEN_BREAK = re.compile(r"(?<=[a-z])-\n(?=[a-z])")
 
 
 def derive_doc_meta(path: Path) -> tuple[str, str]:
     """Turn an EDGAR filename into a readable title and a short id.
 
-    The filenames are machine-generated and ugly, but they follow a pattern:
-    the human title is the last piece.
+    The filenames are ugly but follow a pattern - the human title is the last
+    piece:
 
         BellringBrandsInc_..._EX-10.12_Manufacturing Agreement1
                                        ^^^^^^^^^^^^^^^^^^^^^^^^
-        ACCELERATED..._04_24_2003-EX-10.13-JOINT VENTURE AGREEMENT
-                                           ^^^^^^^^^^^^^^^^^^^^^^^
 
-    Returns (doc_id, title), e.g. ("manufacturing_agreement",
-    "Manufacturing Agreement"). The title is what a citation shows a reader;
-    the id is what the code and the CLI filters use.
+    Returns ("manufacturing_agreement", "Manufacturing Agreement"). The title
+    is what a citation shows; the id is what filters use.
     """
     candidate = path.stem.split("_")[-1].split("-")[-1]
     candidate = re.sub(r"\d+$", "", candidate).strip()  # "Agreement1" -> "Agreement"
@@ -90,14 +79,12 @@ def find_running_lines(
 ) -> set[str]:
     """Detect running headers and footers by how often a line repeats.
 
-    Only the first and last couple of lines of each page are considered, so a
-    sentence that legitimately recurs in the body is never mistaken for
-    furniture.
+    Only the first and last couple of lines per page, so a sentence that
+    recurs in the body is never mistaken for furniture.
 
-    Documents shorter than `min_pages` are skipped entirely. In a three-page
-    contract, "repeated on most pages" and "appears twice" are the same
-    condition, and signature blocks appear twice - deleting one would lose
-    real content. Short documents rely on the explicit footer and page-number
+    Documents under `min_pages` are skipped: in a three-page contract
+    "repeated on most pages" and "appears twice" are the same condition, and
+    signature blocks appear twice. Those rely on the footer and page-number
     rules instead.
     """
     if len(pages) < min_pages:
@@ -161,8 +148,8 @@ def extract_document(path: Path) -> dict[str, Any]:
         "source_file": path.name,
         "page_count": len(pages),
         "pages": pages,
-        # Kept in the file so the debug CLI and the tests can check the
-        # cleaning did what it claims without re-opening the PDF.
+        # So the CLI and the tests can check the cleaning without re-opening
+        # the PDF.
         "stats": {
             "raw_chars": len(raw_all),
             "clean_chars": len(clean_all),

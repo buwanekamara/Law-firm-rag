@@ -3,12 +3,9 @@
     uv run scripts/index.py            # rebuild from scratch
     uv run scripts/index.py --keep     # add to the existing collection
 
-Qdrant must be running first:
+Qdrant must be running first: docker compose up -d qdrant
 
-    docker run -p 6333:6333 -v ./qdrant_data:/qdrant/storage qdrant/qdrant
-
-The first run downloads the embedding model (~130MB) and takes a minute or
-two. After that it is seconds.
+The first run downloads the embedding model (~130MB).
 """
 
 from __future__ import annotations

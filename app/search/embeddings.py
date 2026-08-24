@@ -1,19 +1,10 @@
 """Embedding models, loaded once and shared.
 
-Two different models produce two different views of the same chunk:
+Two views of the same chunk: a dense model for meaning ("end the contract
+early" finds a termination clause), BM25 for exact words (defined terms like
+"Transporter" carry precise meanings a paraphrase loses). Contracts need both.
 
-- a *dense* model (bge-small-en-v1.5) turns text into 384 numbers that capture
-  meaning, so "can we end the contract early?" finds a clause about
-  termination even though neither word appears in it;
-- a *sparse* model (BM25) scores exact word overlap, so a defined term like
-  "Transporter" or "the Brand" lands on the clause that actually uses that
-  word.
-
-Legal text needs both. Dense retrieval alone misses defined terms, which in a
-contract carry precise meanings that a paraphrase does not preserve. Keyword
-search alone misses every question a person phrases in their own words.
-
-Both models run locally on CPU. Nothing is sent anywhere to embed a query.
+Both run locally on CPU.
 """
 
 from __future__ import annotations
@@ -26,14 +17,13 @@ from fastembed.sparse.sparse_embedding_base import SparseEmbedding
 
 from app.config import settings
 
-# bge-small-en-v1.5 produces vectors of this length. Qdrant needs to know it
-# up front, when the collection is created.
+# bge-small-en-v1.5 vector length. Qdrant needs it when the collection is made.
 DENSE_DIMENSIONS = 384
 
 
 @lru_cache(maxsize=1)
 def dense_model() -> TextEmbedding:
-    """Loaded lazily: the first call downloads ~130MB and takes a few seconds."""
+    """Lazy: the first call downloads ~130MB."""
     return TextEmbedding(model_name=settings.dense_model)
 
 
@@ -53,9 +43,8 @@ def embed_documents(texts: Iterable[str]) -> tuple[list[list[float]], list[Spars
 def embed_query(text: str) -> tuple[list[float], SparseEmbedding]:
     """Embed a question.
 
-    BM25 deliberately embeds queries differently from documents - query terms
-    are not length-normalised - which is why this calls query_embed rather
-    than reusing embed_documents.
+    query_embed, not embed_documents: BM25 does not length-normalise query
+    terms the way it does document terms.
     """
     dense = next(iter(dense_model().query_embed(text))).tolist()
     sparse = next(iter(sparse_model().query_embed(text)))

@@ -1,4 +1,4 @@
-"""Debug CLI for phase 4 - the whole pipeline, end to end.
+"""Debug CLI: the whole pipeline, end to end.
 
     uv run scripts/ask.py "What are the confidentiality obligations?"
     uv run scripts/ask.py "When can the licence be terminated?" --debug
@@ -6,8 +6,7 @@
     uv run scripts/ask.py --models        # what the gateway will accept
     uv run scripts/ask.py --models openai # ...filtered
 
---debug prints the exact prompt that was sent and the raw reply. You will use
-it constantly in the next two phases.
+--debug prints the exact prompt that was sent and the raw reply.
 """
 
 from __future__ import annotations
@@ -36,8 +35,8 @@ def resolve_doc(fragment: str | None) -> str | None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ask a question about the contracts.")
     parser.add_argument("question", nargs="?", help="the question")
-    parser.add_argument("--k", type=int, help="how many excerpts to retrieve")
-    parser.add_argument("--doc", help="restrict to one contract")
+    parser.add_argument("--k", type=int, help=f"excerpts to retrieve (default {settings.top_k})")
+    parser.add_argument("--doc", help="restrict to one contract, or a fragment of its name")
     parser.add_argument("--debug", action="store_true", help="show the prompt and raw reply")
     parser.add_argument(
         "--models", nargs="?", const="", metavar="FILTER",

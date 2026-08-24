@@ -1,10 +1,8 @@
-"""Phase 3a - building the Qdrant index.
+"""Building the Qdrant index.
 
-Every chunk becomes one point carrying two vectors under different names:
-"dense" for meaning and "sparse" for exact wording. Storing both on the same
-point is what lets Qdrant run the two searches and fuse them in a single
-round trip, instead of the application making two calls and merging the
-results itself with hand-rolled score maths.
+Each chunk is one point carrying two named vectors, "dense" and "sparse".
+Keeping both on the same point lets Qdrant run and fuse the two searches in
+one round trip instead of merging two result lists by hand.
 """
 
 from __future__ import annotations
@@ -23,25 +21,18 @@ from app.search.embeddings import DENSE_DIMENSIONS, embed_documents
 DENSE_VECTOR = "dense"
 SPARSE_VECTOR = "sparse"
 
-# Embedding in batches keeps memory flat and gives the CLI something to
-# report. Lower EMBED_BATCH_SIZE on a memory-constrained host.
+# Batching keeps memory flat and gives the CLI progress to report.
 BATCH_SIZE = settings.embed_batch_size
 
 
 def get_client(url: str | None = None, path: str | None = None) -> QdrantClient:
-    """Connect to Qdrant, in one of three ways.
+    """Connect to Qdrant: a server, embedded on disk, or in memory.
 
-    1. A server, the normal case: QDRANT_URL=http://localhost:6333.
-    2. Embedded on disk: set QDRANT_PATH=./qdrant_local and the same Qdrant
-       engine runs inside this Python process, storing to that folder. No
-       Docker, no server, same query API - including the fusion queries. The
-       catch is that the storage folder takes an exclusive lock, so only one
-       process may hold it at a time: the API server and a CLI script cannot
-       both be open on it at once.
-    3. In memory: QDRANT_URL=":memory:", used by the tests.
+    QDRANT_PATH runs the engine inside this process - no Docker, same query
+    API, but the storage folder takes an exclusive lock, so the API server and
+    a CLI script cannot both hold it.
 
-    Precedence is deliberate - ":memory:" wins so a developer's QDRANT_PATH
-    setting can never leak into a test run.
+    ":memory:" is checked first so a local QDRANT_PATH cannot leak into tests.
     """
     url = url or settings.qdrant_url
     if url == ":memory:":
@@ -67,7 +58,7 @@ def get_client(url: str | None = None, path: str | None = None) -> QdrantClient:
 
 
 def backend_description() -> str:
-    """One line naming where the index lives, for the CLIs to print."""
+    """One line naming where the index lives, for the CLIs."""
     if settings.qdrant_url == ":memory:":
         return "in-memory Qdrant (nothing is persisted)"
     if settings.qdrant_path:
@@ -78,10 +69,9 @@ def backend_description() -> str:
 def point_id(chunk_id: str) -> str:
     """A stable UUID for a chunk.
 
-    Qdrant point ids must be integers or UUIDs, and our chunk ids are strings
-    like "hosting_agreement::2::1". Deriving the UUID from the chunk id means
-    re-indexing the same chunk overwrites its old point rather than adding a
-    duplicate.
+    Qdrant ids must be ints or UUIDs; ours are strings like
+    "hosting_agreement::2::1". Deriving it means re-indexing overwrites rather
+    than duplicates.
     """
     return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
 
@@ -89,12 +79,9 @@ def point_id(chunk_id: str) -> str:
 def text_for_embedding(chunk: dict[str, Any]) -> str:
     """What actually gets embedded.
 
-    The citation header is prepended so the document title, section number and
-    parent heading are part of the searchable text. Without it, a question
-    naming a section ("what does Article X say") has nothing to match, and the
-    trademark licence's group headings - "Grant of Rights; Sublicensing",
-    which live in metadata rather than in any chunk body - would be invisible
-    to search.
+    The citation header goes in front so the title, section number and parent
+    heading are searchable. Without it "what does Article X say" has nothing
+    to match, and group headings that live only in metadata are invisible.
     """
     header = citation_header(chunk)
     parent = f"{chunk['parent_label']} {chunk['parent_heading']}" if chunk["parent_label"] else ""
@@ -117,10 +104,9 @@ def ensure_collection(client: QdrantClient, recreate: bool = False) -> None:
             )
         },
         sparse_vectors_config={
-            # IDF tells Qdrant to weight rare words more heavily than common
-            # ones, which is the "inverse document frequency" half of BM25.
-            # Without this modifier the sparse vectors are raw term counts and
-            # every occurrence of "Agreement" counts as much as "Transporter".
+            # IDF weights rare words above common ones - the "inverse
+            # document frequency" half of BM25. Without it these are raw term
+            # counts and "Agreement" counts as much as "Transporter".
             SPARSE_VECTOR: models.SparseVectorParams(modifier=models.Modifier.IDF)
         },
     )

@@ -1,30 +1,18 @@
-"""Phase 6.5 - masking personal data before it leaves the machine.
+"""Masking personal data before it leaves the machine.
 
-Retrieval, embedding and chunking all happen locally. The one moment contract
-text crosses the network is the call to the model gateway, so that is the one
-place worth masking. Person names and contact details are replaced with stable
-placeholders on the way out and restored in the answer on the way back, so the
-model reasons about "PERSON_1" and the reader sees the real name.
+Everything else runs locally; the gateway call is the one moment contract text
+crosses the network, so it is the one place worth masking. Names and contact
+details go out as stable placeholders and are restored in the answer.
 
-What is *not* masked matters more than what is, and this corpus makes the point
-sharply. Presidio, run over these five contracts, flags:
+What is not masked matters more. Over these five contracts Presidio flags 145
+dates, 122 locations and 44 people - including "Heritage", a contracting
+party. Masking dates loses "when does this take effect", locations loses
+"which state's law governs", and "Heritage" makes its contract unanswerable.
 
-  DATE_TIME  145 hits   "January 11, 2018", "12 weeks", "9 a.m. to 5 p.m."
-  LOCATION   122 hits   "Delaware", "Santa Ana", "Pennsylvania"
-  PERSON      44 hits   including "Jasper" and "Heritage"
-  US_SSN       1 hit    "92703-1310" - a ZIP+4, at 0.05 confidence
-
-Masking dates would remove the answer to "when does this take effect". Masking
-locations would remove the answer to "which state's law governs". And masking
-"Heritage" - a contracting party, not a person - would make the manufacturing
-agreement unanswerable. None of those are personal data in a contract filed
-publicly with a securities regulator.
-
-So masking here is deliberately narrow: contact details and genuine person
-names only, above a confidence threshold, and never a term the contract itself
-defines. Contracts announce their load-bearing names by putting them in
-quotation marks - ("Heritage"), ("Transporter"), ("Brand") - which gives an
-allowlist derived from the corpus rather than hand-written.
+So this is narrow: contact details and real person names above a confidence
+threshold, never a term the contract defines. Contracts mark those with
+quotation marks - ("Heritage"), ("Transporter") - which gives an allowlist
+taken from the corpus instead of hand-written.
 """
 
 from __future__ import annotations
@@ -35,8 +23,7 @@ from functools import lru_cache
 
 from app.config import settings
 
-# Entities worth masking. Deliberately excludes DATE_TIME, LOCATION, ORG, NRP
-# and URL - see the module docstring.
+# Excludes DATE_TIME, LOCATION, ORG, NRP and URL - see the module docstring.
 MASKED_ENTITIES = (
     "PERSON",
     "EMAIL_ADDRESS",
@@ -48,14 +35,13 @@ MASKED_ENTITIES = (
     "US_PASSPORT",
 )
 
-# Presidio reports a confidence per detection. The ZIP+4 mistaken for a social
-# security number scored 0.05; genuine detections in this corpus score 0.85 or
-# 1.0, so the threshold has plenty of room.
+# Presidio scores each detection. In this corpus a ZIP+4 read as a social
+# security number scores 0.05 and real detections score 0.85 or above, so the
+# threshold has room either side.
 MIN_CONFIDENCE = settings.masking_min_confidence
 
-# A detected span longer than this, or containing a line break, is a parsing
-# artefact rather than a name. Presidio produced "Schedule B.\n(iii) Heritage"
-# as a single PERSON.
+# Longer than this, or containing a newline, is a parsing artefact rather than
+# a name - "Schedule B.\n(iii) Heritage" arrives as a single PERSON.
 MAX_SPAN_LENGTH = 40
 
 # Defined terms: ("Heritage"), ("Transporter"). Curly or straight quotes.
@@ -97,10 +83,8 @@ def _analyzer():
 def defined_terms() -> frozenset[str]:
     """Every term the corpus defines in quotation marks.
 
-    These are the names the contracts run on - parties, facilities, brands -
-    and replacing them with placeholders would make the text unanswerable.
-    Derived from the chunks rather than hand-listed, so a new corpus needs no
-    new code.
+    Parties, facilities, brands - masking these would make the text
+    unanswerable. Read from the chunks, so a new corpus needs no new code.
     """
     try:
         from app.ingest.chunking import load_chunks
@@ -131,9 +115,8 @@ def _is_protected(value: str) -> bool:
 def mask_text(text: str, mapping: dict[str, str] | None = None) -> MaskResult:
     """Replace personal data with stable placeholders.
 
-    `mapping` carries state between calls, so the same person is PERSON_1 in
-    every excerpt of one request - otherwise the model sees two placeholders
-    and cannot tell they are the same party.
+    `mapping` carries across calls so one person is PERSON_1 in every excerpt
+    of a request; otherwise the model cannot tell two placeholders apart.
     """
     mapping = dict(mapping or {})
     reverse = {original: placeholder for placeholder, original in mapping.items()}
@@ -165,8 +148,7 @@ def mask_text(text: str, mapping: dict[str, str] | None = None) -> MaskResult:
 def unmask_text(text: str, mapping: dict[str, str]) -> str:
     """Put the real values back.
 
-    Longest placeholders first, so PERSON_10 is restored before PERSON_1 can
-    match the start of it.
+    Longest first, so PERSON_1 cannot match the front of PERSON_10.
     """
     for placeholder in sorted(mapping, key=len, reverse=True):
         text = text.replace(placeholder, mapping[placeholder])

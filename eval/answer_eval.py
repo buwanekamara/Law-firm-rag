@@ -7,9 +7,9 @@ that does not exist all produce plausible-looking wrong answers unless the
 system is built to distinguish them.
 
 Every check here is deterministic - string and citation matching, no second
-model forming an opinion. That keeps this harness cheap enough to run on every
-prompt change. The judge that scores whether an answer is actually supported
-by its excerpts arrives in phase 6.
+model forming an opinion - which keeps it cheap enough to run on every prompt
+change. Whether an answer is actually supported by its excerpts is a separate
+question, scored by eval/faithfulness_eval.py.
 
     uv run eval/answer_eval.py                       # current PROMPT_VERSION
     uv run eval/answer_eval.py --versions v1 v2      # before and after
@@ -60,7 +60,7 @@ def load_questions() -> list[dict]:
 
 
 def cites_expected(result, expected: list[dict]) -> bool:
-    """Did the answer cite one of the sections we expect?
+    """Did the answer cite one of the sections the answer key expects?
 
     Matched against the chunks that were actually retrieved rather than
     against the answer key directly, so the comparison carries a real document
@@ -132,10 +132,9 @@ def check(question: dict, result) -> tuple[bool, str]:
 def evaluate(questions: list[dict], version: str, runs: int = 1) -> dict:
     """Score one prompt version.
 
-    `runs` repeats every question. Temperature is 0, but these models are not
-    bit-for-bit deterministic, and a single run turns that noise into a
-    number that looks exact. Repeating shows which results are stable and
-    which are coin flips.
+    `runs` repeats every question. Temperature 0 is not determinism, so a
+    single run turns that noise into a number that looks exact. Repeating
+    shows which results are stable and which are coin flips.
     """
     rows = []
     for question in questions:

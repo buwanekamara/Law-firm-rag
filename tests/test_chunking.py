@@ -1,4 +1,4 @@
-"""Phase 2 tests.
+"""Chunking tests.
 
 The assertions are deliberately specific - "section 1 of the hosting agreement
 is one chunk titled Website Design and Development" - because a chunker that

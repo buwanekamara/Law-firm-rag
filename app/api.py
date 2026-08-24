@@ -1,9 +1,8 @@
 """FastAPI application.
 
-Two endpoints: /health for configuration and liveness, /ask for questions.
-The auto-generated documentation at /docs is the interface for now - it is a
-usable demo on its own, so a hand-written UI can wait until everything else
-works.
+/ serves the tester page, /ask answers, /ask/stream reports progress while it
+does, /health dumps the active configuration, /documents lists what is
+indexed. Generated API docs at /docs.
 """
 
 import json
@@ -59,10 +58,9 @@ class AskRequest(BaseModel):
 def resolve_doc_id(fragment: str | None) -> str | None:
     """Turn a document fragment into a real doc_id, or reject it.
 
-    An unknown filter must be an error rather than an empty result set. The
-    interactive docs page pre-fills optional strings with the word "string",
-    and silently answering "no relevant clause was found" because of that
-    looks like a corpus problem when it is a typo.
+    An unknown filter is an error, not an empty result: /docs pre-fills
+    optional strings with "string", and refusing because of that looks like a
+    corpus problem when it is a typo.
     """
     if not fragment:
         return None
@@ -81,13 +79,13 @@ def resolve_doc_id(fragment: str | None) -> str | None:
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
-    """The tester page - one static file, no build step, no separate service."""
+    """The tester page - one static file, no build step."""
     return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/documents")
 def documents() -> list[dict]:
-    """The contracts currently indexed. The page uses this for its filter."""
+    """The contracts currently indexed; the page uses it for its filter."""
     if collection_size() == 0:
         return []
     return [
@@ -98,11 +96,10 @@ def documents() -> list[dict]:
 
 @app.get("/health")
 def health() -> dict:
-    """Liveness check plus a readable dump of the active configuration.
+    """Liveness, plus the configuration actually in effect.
 
-    Useful beyond 'is it up': it confirms the app found the contracts folder
-    and picked up the environment you think it did. The API key is never
-    returned - only whether one is present.
+    Confirms the contracts folder was found and the environment is the one you
+    think it is. The key itself is never returned, only whether there is one.
     """
     contracts = list_contracts()
     return {
@@ -128,14 +125,12 @@ def health() -> dict:
 def ask_stream(request: AskRequest, debug: bool = Query(default=False)) -> StreamingResponse:
     """The same answer, with the pipeline's progress reported as it happens.
 
-    Newline-delimited JSON rather than server-sent events, because the request
-    carries a body and EventSource can only issue GETs.
+    NDJSON rather than server-sent events: the request has a body and
+    EventSource can only issue GETs.
 
-    The *answer* is not streamed - it arrives whole, in the final event.
-    Citations are verified and masked names restored only once the model's
-    reply is complete, and streaming the prose would put text on screen that
-    nothing had checked yet. What is streamed is what the system is doing
-    during the seconds that takes, which is the part a person is waiting on.
+    The answer is not streamed - it arrives whole in the final event, because
+    citations are verified and names restored only once the reply is complete.
+    What streams is what the system is doing while that happens.
     """
     if collection_size() == 0:
         raise HTTPException(status_code=503, detail="No chunks are indexed. Run: uv run scripts/index.py")
@@ -157,7 +152,7 @@ def ask_stream(request: AskRequest, debug: bool = Query(default=False)) -> Strea
             events.put({"stage": "done", "result": result.to_dict()})
         except MissingApiKey as error:
             events.put({"stage": "error", "detail": str(error)})
-        except Exception as error:  # the client needs to hear about it, whatever it was
+        except Exception as error:  # whatever it was, the client needs to hear
             events.put({"stage": "error", "detail": f"{type(error).__name__}: {error}"})
         finally:
             events.put(DONE)
@@ -184,9 +179,8 @@ def ask(
 ) -> dict:
     """Answer a question from the indexed contracts.
 
-    `debug=true` returns the retrieved excerpts and the rendered prompt
-    alongside the answer. That is the difference between "the answer is wrong"
-    and knowing which stage made it wrong.
+    `debug=true` also returns the excerpts and the rendered prompt - the
+    difference between "wrong answer" and knowing which stage made it wrong.
     """
     if collection_size() == 0:
         raise HTTPException(

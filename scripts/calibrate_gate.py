@@ -2,19 +2,13 @@
 
     uv run scripts/calibrate_gate.py
 
-For every question in the golden set it prints the cosine similarity of the
-closest chunk, splitting them into questions the corpus can answer and the one
-it cannot. A usable threshold sits between the two groups: above the
-not-in-corpus question, below the weakest real question.
+Prints the closest chunk's similarity for every question in the golden set,
+split into ones the corpus can answer and ones it cannot. A usable threshold
+sits between the groups. If they overlap there is no safe threshold, and the
+honest move is to leave gating off.
 
-If the groups overlap there is no safe threshold, and the honest response is
-to leave gating off and say so - a gate that rejects real questions is worse
-than no gate at all.
-
-The score used is dense cosine similarity, not the fused hybrid score.
-Reciprocal rank fusion ranks by agreement between two result lists, so the
-top result of a nonsense query scores about as well as the top result of a
-good one. See app/retrieval.best_similarity.
+Dense cosine similarity, not the fused score - see
+app.search.retrieval.best_similarity.
 """
 
 from __future__ import annotations

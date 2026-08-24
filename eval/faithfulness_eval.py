@@ -13,22 +13,19 @@ world - only whether it stayed inside its sources, which is exactly what
 hallucination means here.
 
 The judge is a different model from the answerer (JUDGE_MODEL, not
-LLM_MODEL). A model asked to grade its own output tends to agree with itself;
-using a second model removes the most obvious form of that bias, though not
-all of it - two models trained on overlapping data can share a blind spot, and
-this is a check, not a proof.
+LLM_MODEL), because a model grading its own output tends to agree with itself.
+That removes the most obvious form of the bias, not all of it: two models can
+share a blind spot, so this is a check rather than a proof.
 
     uv run eval/faithfulness_eval.py
     uv run eval/faithfulness_eval.py --md
     uv run eval/faithfulness_eval.py --ids t01 t04
     uv run eval/faithfulness_eval.py --selftest   # can the judge fail anything?
 
-The self-test exists because a perfect score proves nothing on its own. A
-judge that always answers "supported" produces exactly the output a good judge
-produces on clean answers, and the two are indistinguishable from the result.
-So before trusting a number, the judge is shown answers with known invented
-claims and has to catch them - and one clean answer it has to leave alone,
-since a judge that flags everything is equally useless.
+The self-test exists because a perfect score proves nothing on its own: a
+judge that always answers "supported" gives exactly the output a good judge
+gives on clean answers. --selftest shows it answers with known invented claims
+that it has to catch, plus one clean answer it has to leave alone.
 """
 
 from __future__ import annotations
@@ -178,11 +175,10 @@ def judge(answer: str, excerpts: str) -> list[dict]:
 def score_question(question: dict, runs: int = 1) -> dict:
     """Score one question, averaged over `runs` independent attempts.
 
-    Two things vary between runs and they compound: the answering model is not
-    bit-for-bit deterministic even at temperature 0, and the judge is a second
-    model reading whatever came out. A single run of one question produced 5
-    claims at 60% and then 3 claims at 100% - same question, same settings.
-    One sample of a number that moves that much is not a measurement.
+    Two things vary and they compound: the answering model is not deterministic
+    even at temperature 0, and the judge is a second model reading whatever
+    came out. The same question can yield 5 claims at 60% on one run and 3 at
+    100% on the next, so a single sample is not a measurement.
     """
     attempts = [_score_once(question) for _ in range(runs)]
     scored = [attempt for attempt in attempts if attempt["faithfulness"] is not None]

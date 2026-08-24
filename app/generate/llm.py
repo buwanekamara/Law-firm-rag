@@ -1,14 +1,8 @@
-"""Phase 4 - the model call.
+"""The model call.
 
-One thin wrapper over the OpenAI client pointed at the Vercel AI Gateway. The
-gateway speaks the OpenAI protocol, so no vendor-specific code is needed and
-the model is chosen by an environment variable - including a *different* model
-for judging answers in the evaluation, so the answering model never grades its
-own work.
-
-Temperature is 0 from the first line of this file. A retrieval-augmented
-answer should be reproducible: if the same question and the same excerpts
-produce a different answer each run, no evaluation of it means anything.
+A thin wrapper over the OpenAI client pointed at the Vercel AI Gateway. The
+gateway speaks the OpenAI protocol, so the model is just an environment
+variable - including a different one for judging answers in eval.
 """
 
 from __future__ import annotations
@@ -19,13 +13,11 @@ from openai import OpenAI
 
 from app.config import settings
 
-# Generous by default, because a slow gateway is a worse failure than a slow
-# answer. LLM_TIMEOUT_SECONDS overrides it.
 REQUEST_TIMEOUT_SECONDS = settings.llm_timeout_seconds
 
 
 class MissingApiKey(RuntimeError):
-    """Raised with an actionable message rather than a bare 401 from the API."""
+    """Raised instead of letting a bare 401 come back from the API."""
 
 
 @lru_cache(maxsize=1)
@@ -61,11 +53,9 @@ def complete(
 
 
 def list_models(contains: str | None = None) -> list[str]:
-    """Model ids the gateway will accept, optionally filtered.
+    """Model ids the gateway accepts, optionally filtered.
 
-    Useful because gateway model slugs drift - the JUDGE_MODEL this project
-    started with, "anthropic/claude-3-5-haiku", no longer exists - and a wrong
-    one surfaces as an unhelpful 404 at the worst moment.
+    Gateway slugs change over time, and a wrong one surfaces as a 404.
     """
     ids = sorted(model.id for model in get_client().models.list().data)
     if contains:

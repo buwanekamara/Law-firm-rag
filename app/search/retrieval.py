@@ -1,35 +1,16 @@
-"""Phase 3b - hybrid retrieval with server-side fusion.
+"""Hybrid retrieval with server-side fusion.
 
-Two searches run against the same collection: one over dense vectors
-(meaning), one over sparse BM25 vectors (exact wording). Their results are
-combined by Reciprocal Rank Fusion.
+A dense search (meaning) and a BM25 search (exact wording) are combined by
+Reciprocal Rank Fusion. RRF uses each result's rank rather than its score,
+which matters because cosine similarity and BM25 are on different scales -
+adding them would mean inventing a weight. Qdrant fuses server-side, so this
+is one round trip.
 
-Why RRF rather than adding the scores together: cosine similarity and BM25
-live on different scales, and BM25's range shifts with the corpus. Adding them
-means inventing a weight and defending it. RRF ignores the scores and uses
-only each result's *rank* in each list - a chunk placed first by either search
-contributes 1/(60+1), one placed fifth contributes 1/(60+5). Anything ranked
-highly by both rises to the top, and nothing has to be normalised.
-
-Qdrant performs the fusion itself, so this is one network round trip rather
-than two searches merged in Python.
-
-Measured outcome. On a first set of 17 straightforward questions, fusion
-showed no benefit: dense retrieval alone placed the correct section first on
-16 of 17 and hybrid on 15, so the default was set to dense. Adding three
-harder questions reversed that. Asked for a redacted price and for a
-placeholder effective date, dense retrieval missed both clauses entirely -
-outside the top eight - while BM25 found them at ranks 3 and 1, and fusion at
-5 and 2. Hybrid is now the only mode that puts a correct section in the top
-five for every scored question.
-
-The failure is structural rather than bad luck. A dense vector averages a
-whole chunk into one point, so a single fact inside a long heterogeneous
-chunk - the trademark preamble covers the parties, the brand and four
-recitals - is diluted by everything around it. BM25 does not average: one
-exact term match still scores. Neither half is reliable alone on contract
-text, which is the actual argument for fusing them.
-
+Hybrid is the configured mode because dense search alone does not reliably
+find clauses whose value is redacted or left as a placeholder: a dense vector
+averages a whole chunk, so one fact inside a long one is diluted. BM25 does
+not average, so an exact term match still scores. Numbers in
+docs/retrieval-eval.md.
 """
 
 from __future__ import annotations
@@ -43,14 +24,11 @@ from app.config import settings
 from app.search.embeddings import embed_query
 from app.search.indexing import DENSE_VECTOR, SPARSE_VECTOR, get_client
 
-# Each branch of the hybrid search fetches this multiple of the requested
-# result count before fusion. Fusing two top-5 lists gives the ranking very
-# little to work with; fusing two top-20 lists lets a chunk that placed 12th
-# on one side and 2nd on the other still surface.
+# Each branch fetches this multiple of top_k before fusion, so a chunk that
+# placed 12th on one side and 2nd on the other can still surface.
 PREFETCH_MULTIPLIER = settings.prefetch_multiplier
 
-# The configured default is "dense" (see the module docstring). All three
-# remain available so eval/retrieval_eval.py can compare them.
+# All three stay available so eval/retrieval_eval.py can compare them.
 SEARCH_MODES = ("hybrid", "dense", "sparse")
 
 
@@ -99,9 +77,8 @@ def list_indexed_documents(client: QdrantClient) -> dict[str, str]:
 def infer_doc_filter(question: str, documents: dict[str, str]) -> str | None:
     """Spot a question that names one contract: "in the hosting agreement...".
 
-    Only applied when exactly one document matches. A question mentioning two
-    contracts is a comparison, and filtering it to one of them would quietly
-    remove half the answer.
+    Only when exactly one matches - a question naming two is a comparison, and
+    filtering to one would quietly remove half the answer.
     """
     asked = question.lower()
     matches = set()
@@ -122,8 +99,7 @@ def search(
 ) -> list[SearchResult]:
     """Retrieve the chunks most likely to answer `question`.
 
-    `mode` defaults to the configured SEARCH_MODE. Pass it explicitly to
-    compare retrieval strategies - that is what the evaluation does.
+    `mode` defaults to SEARCH_MODE; the evaluation passes it explicitly.
     """
     mode = mode or settings.search_mode
     if mode not in SEARCH_MODES:
@@ -190,16 +166,12 @@ def best_similarity(
 ) -> float:
     """Cosine similarity between the question and the closest chunk.
 
-    This is the signal the refusal gate uses, and it is deliberately *not*
-    the fused hybrid score. Reciprocal rank fusion scores a result by how
-    highly the two searches ranked it, not by how close it is to the
-    question - so the top result of a nonsense query scores about as well as
-    the top result of a good one, because something always has to come first.
-    Cosine similarity against the dense vector is an actual measure of
-    closeness, which is what a "do we have anything relevant at all?" check
-    needs.
+    What the refusal gate uses, and deliberately not the fused score: RRF
+    ranks by agreement between the two searches, so a nonsense query's top hit
+    scores about as well as a good one's - something always comes first.
+    Cosine similarity actually measures closeness.
 
-    Costs one extra query, which only happens when gating is switched on.
+    One extra query, only when gating is on.
     """
     results = search(question, top_k=1, doc_id=doc_id, client=client, mode="dense")
     return results[0].score if results else 0.0

@@ -1,10 +1,9 @@
 """The configuration contract.
 
-Every setting is read from the environment with no fallback in code, which
-makes .env.example the only complete statement of what this application needs
-to start. That is a contract worth testing: a setting added to Settings without
-a matching line in the template would otherwise stay invisible here and surface
-as a startup failure on somebody else's machine. It happened once already.
+Every setting is read from the environment with no fallback in code, so
+.env.example is the only complete statement of what the application needs to
+start. A setting added to Settings without a matching line in the template
+would otherwise surface as a startup failure on someone else's machine.
 """
 
 from __future__ import annotations

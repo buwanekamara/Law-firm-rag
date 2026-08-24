@@ -1,4 +1,4 @@
-"""Phase 3 tests - the plumbing, not the ranking quality.
+"""Retrieval tests - the plumbing, not the ranking quality.
 
 Ranking quality is a measurement, not an assertion; it lives in
 eval/retrieval_eval.py and is run against the real models.

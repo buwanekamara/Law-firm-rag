@@ -1,217 +1,288 @@
 # Contract RAG
 
-Ask questions about a small corpus of commercial contracts and get answers
-cited down to the specific section — with a refusal instead of a guess when
-the contracts do not say.
+Ask questions about a folder of contracts and get answers that cite the exact
+section they came from. When the contracts do not say, it says so instead of
+guessing.
 
-Five agreements are indexed: a joint venture, a manufacturing agreement, a
-hosting agreement, a trademark licence and a transportation agreement.
+Five agreements are indexed out of the box: a joint venture, a manufacturing
+agreement, a hosting agreement, a trademark licence and a gas transportation
+agreement.
+
+```
+You:  What are the confidentiality obligations in the hosting agreement?
+It:   Each party must hold the other's Confidential Information in strict
+      confidence and use it only to perform the agreement.
+      - Hosting Agreement, Section 9.1 (page 12)
+```
+
+Every citation is checked against the text the model was actually shown. One
+that does not match is removed before you see it.
+
+---
+
+## Contents
+
+- [Adding your own contracts](#adding-your-own-contracts)
+- [Run it with Docker](#run-it-with-docker)
+- [Install with uv](#install-with-uv)
+- [Install with pip](#install-with-pip)
+- [Using it](#using-it)
+- [Settings](#settings)
+- [What each file does](#what-each-file-does)
+
+---
+
+## Adding your own contracts
+
+1. Drop the PDFs into the `contracts/` folder. Nothing else needs editing.
+2. Rebuild the index:
+
+   ```bash
+   uv run scripts/extract.py    # PDFs   -> cleaned text
+   uv run scripts/chunk.py      # text   -> one chunk per contract section
+   uv run scripts/index.py      # chunks -> searchable index
+   ```
+
+   With Docker, `docker compose up --build` does all three on startup.
+
+3. Check it worked: `uv run scripts/chunk.py` prints a table of every chunk.
+   The section column should read like the contract's own table of contents.
+
+**Name the files carefully.** The title shown in citations comes from the last
+part of the filename, after the final `_` or `-`, so
+`Acme_2019_EX-10.1_Supply Agreement.pdf` is cited as "Supply Agreement".
+A file called `scan1.pdf` will be cited as "scan1".
+
+**Scanned PDFs will not work.** Text is read from the PDF's own text layer.
+A scanned image of a contract produces nothing to index.
+
+One thing to change if you swap the corpus: the refusal message in
+`app/answer.py` names the five agreements out loud, so a question outside the
+corpus gets a useful reply rather than "nothing found". Edit `_SCOPE` there to
+describe your own set.
 
 ---
 
 ## Run it with Docker
 
+The shortest path. Needs Docker and an AI Gateway key.
+
 ```bash
-cp .env.example .env      # copy .env.example .env  on Windows
-# paste your gateway key into AI_GATEWAY_API_KEY
+cp .env.example .env      # Windows: copy .env.example .env
+# open .env and paste your key into AI_GATEWAY_API_KEY
+
 docker compose up --build
 ```
 
-Three services start in order: Qdrant comes up, a one-shot `ingest` service
-reads the PDFs and builds the index, then the API starts. First build takes a
-few minutes — it downloads dependencies and bakes the embedding models into
-the image. After that, startup is seconds.
+Then open **http://localhost:8000**.
 
-Open **http://localhost:8000** for the interface, or
-**http://localhost:8000/docs** for the API.
+The first build takes a few minutes: it installs dependencies and bakes the
+embedding models into the image. After that, startup is seconds. Three things
+start in order — the search engine, a one-shot job that reads the contracts
+and builds the index, then the web service.
 
 ```bash
 docker compose down       # stop, keep the index
-docker compose down -v    # stop, discard the index
+docker compose down -v    # stop, throw the index away
+docker compose logs -f    # watch what it is doing
 ```
 
-## Run it locally
+---
 
-Needs Python 3.12 and [uv](https://docs.astral.sh/uv/).
+## Install with uv
+
+[uv](https://docs.astral.sh/uv/) installs the exact versions in `uv.lock`.
+Needs Python 3.12.
 
 ```bash
 uv sync
-cp .env.example .env      # and paste your key in
+cp .env.example .env      # then paste your key in
 
-docker compose up -d qdrant     # or set QDRANT_PATH in .env to run without Docker
-
-uv run scripts/extract.py       # PDFs  -> text
-uv run scripts/chunk.py         # text  -> clause-aware chunks
-uv run scripts/index.py         # chunks -> Qdrant
+docker compose up -d qdrant      # the search engine
+uv run scripts/extract.py
+uv run scripts/chunk.py
+uv run scripts/index.py
 
 uv run uvicorn app.api:app --reload
 ```
 
-The first `index.py` downloads the embedding model (~130MB) and takes a minute
-or two. After that it is seconds.
+**No Docker at all?** Set `QDRANT_PATH=./qdrant_local` in `.env` and the search
+engine runs inside the application, storing to that folder. Only one process
+may use it at a time, so stop the web service before re-indexing.
 
-Without Docker at all: set `QDRANT_PATH=./qdrant_local` in `.env` and Qdrant
-runs embedded inside the process. One process at a time, so stop the API
-before re-indexing.
+The first `index.py` downloads the embedding model (~130MB). After that it
+takes seconds.
 
-## Ask it something
+---
+
+## Install with pip
+
+Same thing without uv. Needs Python 3.12.
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate            # macOS, Linux:  source .venv/bin/activate
+
+pip install -e .
+cp .env.example .env               # then paste your key in
+
+docker compose up -d qdrant        # or set QDRANT_PATH as above
+python scripts/extract.py
+python scripts/chunk.py
+python scripts/index.py
+
+python -m uvicorn app.api:app --reload
+```
+
+For the tests and the linter as well:
+
+```bash
+pip install pytest pytest-asyncio ruff
+pytest
+ruff check .
+```
+
+pip resolves versions itself rather than reading `uv.lock`, so you may get
+newer releases than the ones this was built against. If something behaves
+oddly, that is the first thing to check.
+
+---
+
+## Using it
+
+**The web page** at http://localhost:8000 — ask a question, pick one contract
+or search all of them, tick "Show prompt and sources" to see which sections
+were retrieved and the exact prompt that was sent.
+
+**The API** at http://localhost:8000/docs, or directly:
 
 ```bash
 curl -s localhost:8000/ask \
   -H 'content-type: application/json' \
-  -d '{"question": "What are the confidentiality obligations in the hosting agreement?"}'
+  -d '{"question": "What are the confidentiality obligations?"}'
 ```
-
-```json
-{
-  "answer": "Under the Hosting Agreement, each party must hold the other's Confidential Information in strict confidence ... (Section 9.1)",
-  "citations": [{"doc_title": "Hosting Agreement", "section": "Section 9.1", "page": 12}],
-  "answered": true,
-  "excerpts_used": 8
-}
-```
-
-Useful additions:
 
 | | |
 |---|---|
-| `?debug=true` | also returns the retrieved chunks and the exact prompt that was sent |
-| `"doc_id": "hosting"` | restrict the search to one contract; a fragment is enough |
-| `"history": [...]` | previous turns, for follow-up questions |
-| `POST /ask/stream` | the same answer, with progress reported stage by stage |
-| `GET /health` | active configuration, contracts found, chunks indexed |
-| `GET /documents` | what is indexed, with the identifiers `doc_id` accepts |
+| `POST /ask` | ask a question |
+| `POST /ask/stream` | the same, reporting progress while it works |
+| `GET /health` | what configuration is in effect, how many chunks are indexed |
+| `GET /documents` | which contracts are indexed |
+
+Useful fields in the request body: `"doc_id": "hosting"` restricts the search
+to one contract, `"top_k": 12` changes how many excerpts are used, and
+`"history": [...]` carries previous turns so follow-up questions work. Add
+`?debug=true` to the URL to get the retrieved chunks and the exact prompt back
+alongside the answer.
 
 Nothing is stored between requests. A conversation is carried by the client
-posting its own history back, so there is no session state and no database.
+sending its own history back, so there is no database and no session state.
 
-## Configuration
-
-Every setting is read from the environment. The code holds no fallback values:
-a missing variable stops the application at startup with a message naming it,
-rather than quietly running on a setting nobody chose.
-
-`.env.example` is the complete template, with a note on each variable
-explaining what it does and, where a value was measured rather than guessed,
-where the measurement is written up. The ones worth knowing about:
-
-| Variable | Why it is set where it is |
-|---|---|
-| `SEARCH_MODE=hybrid` | Dense retrieval alone misses the redacted-price and placeholder-date clauses entirely. See `docs/retrieval-eval.md`. |
-| `TOP_K=8` | At 5, the trademark licence's Section 4.4 fell one slot outside the window and the answer silently omitted a termination trigger. |
-| `MIN_SCORE=0.56` | Calibrated, not guessed: `uv run scripts/calibrate_gate.py`. It rejects questions that are not about these contracts. It cannot tell whether the corpus can answer a contract question — that limit is deliberate and documented. |
-| `PROMPT_VERSION=v5` | Five versions, each measured against the same question set. `docs/answer-eval.md` has the progression. |
-| `MASKING_ENABLED=false` | Personal-data masking is off unless asked for. See below. |
-
-`.env` holds the gateway key and is never committed.
-
-## Personal-data masking
-
-Names and contact details can be replaced with stable placeholders before
-contract text is sent to the model, and restored in the answer afterwards.
-It ships switched off.
-
-It needs a spaCy language model that is too large to put in the image by
-default. To include it:
+**From the command line**, without starting the service:
 
 ```bash
-INSTALL_MASKING=true docker compose build
+uv run scripts/ask.py "When can the licence be terminated?"
+uv run scripts/ask.py "What is the price?" --doc manufacturing --debug
+uv run scripts/search.py "force majeure" --k 10     # retrieval only, no model
 ```
 
-Locally: `uv run python -m spacy download en_core_web_lg`. Then set
-`MASKING_ENABLED=true`.
+---
 
-What is *not* masked matters more than what is. Dates, locations and
-organisations are left alone: masking them would remove the answer to "when
-does this take effect" and "which state's law governs". `app/safety/masking.py`
-explains the reasoning with the counts that produced it.
+## Settings
 
-## Evaluation
+Everything is configured through `.env`. There are no fallback values in the
+code, so a missing variable stops startup with a message naming it.
+
+`.env.example` is the full list. Each entry says what it accepts and what
+changes when you change it. The ones people usually touch:
+
+| Variable | Options | What it does |
+|---|---|---|
+| `LLM_MODEL` | any gateway model id | which model writes the answers |
+| `TOP_K` | 1–20 | how many contract sections the model is shown |
+| `SEARCH_MODE` | `dense` `sparse` `hybrid` | search by meaning, by exact words, or both |
+| `MIN_SCORE` | 0.0–1.0 | how far off-topic a question must be to be refused; 0 turns it off |
+| `PROMPT_VERSION` | `v1`–`v5` | which set of answering rules to use |
+| `MASKING_ENABLED` | `true` `false` | replace names and contact details before sending text out |
+
+Changing `CHUNK_MAX_WORDS`, `DENSE_MODEL` or `SPARSE_MODEL` means the stored
+index no longer matches the settings — re-run the three ingest scripts.
+
+To see the effect of a change instead of guessing:
 
 ```bash
-uv run eval/retrieval_eval.py --md          # does the right clause come back
-uv run eval/answer_eval.py --runs 3 --md    # is the answer right, across prompt versions
-uv run eval/faithfulness_eval.py --runs 3   # is every claim supported by a cited excerpt
-uv run pytest                               # 196 tests
+uv run eval/retrieval_eval.py            # does the right section come back
+uv run eval/answer_eval.py               # is the answer right
+uv run scripts/calibrate_gate.py         # pick MIN_SCORE from your own data
+uv run scripts/chunk.py --sizes          # what a chunking change did
 ```
 
-Measured on the current build:
+`docs/` holds the results of those runs and the reasoning behind each setting.
 
-| | |
-|---|---|
-| Retrieval, 21 questions, top-8 | hybrid **100%** hit rate, MRR 0.89 — against 90% dense, 95% sparse |
-| Answers, 26 questions × 3 runs | 24/26 correct, 0 unsupported citations reached the reader |
-| Faithfulness, 87 claims | 96.4% supported by a cited excerpt |
-| Judge self-test | caught 4/4 planted fabrications, left the clean control alone |
+---
 
-`docs/results.md` collects these; `docs/how-it-works.md` walks the pipeline.
-
-## How it works
+## What each file does
 
 ```
-PDF ──► text + page numbers ──► clause-aware chunks ──► Qdrant
-                                                          │
-question ──► condense (if it is a follow-up) ──► retrieve ─┘
-                                    │
-                       relevance gate: too far off-topic, refuse here
-                                    │
-                          mask ──► prompt ──► model
-                                    │
-                    verify every citation against what was retrieved
-                                    │
-                                 answer
+contracts/              the source PDFs - put yours here
+data/                   generated: extracted text and chunk files
+docs/                   evaluation results and design notes
+
+app/
+  api.py                the web service: /ask, /health, /documents
+  answer.py             the pipeline, end to end
+  config.py             every setting, read from the environment
+  static/index.html     the web page - one file, no build step
+
+  ingest/
+    extraction.py       PDF -> clean text, keeping page numbers
+    chunking.py         text -> one chunk per contract section
+
+  search/
+    embeddings.py       turns text into vectors, locally
+    indexing.py         builds and loads the search index
+    retrieval.py        finds the sections most likely to answer
+
+  generate/
+    llm.py              the model call
+    prompting.py        loads prompt files and fills in the question
+    conversation.py     rewrites follow-up questions so they can be searched
+    prompts/            the answering rules, one file per version
+
+  safety/
+    guards.py           checks citations are real and refusals are genuine
+    masking.py          replaces names and contact details before sending
+
+scripts/                one debug tool per stage - run any step on its own
+  extract.py  chunk.py  index.py  search.py  ask.py  mask.py  calibrate_gate.py
+
+eval/                   measurement harnesses and the question set
+  retrieval_eval.py     does the right section come back
+  answer_eval.py        is the answer right, across prompt versions
+  faithfulness_eval.py  is every claim backed by a cited excerpt
+  questions.jsonl       the questions and their expected answers
+
+tests/                  202 tests, no network and no Docker needed
 ```
 
-Two things are worth calling out because they were not obvious in advance.
+**Where to start reading:** `app/answer.py` is the whole pipeline in one file,
+and every other module is a step in it.
 
-**Every chunk is stored twice**, as a dense vector and as a sparse one, and
-searches are fused by reciprocal rank. The first evaluation said this was
-pointless — dense alone scored higher. Adding questions about clauses where
-the value is redacted or left as a placeholder reversed it: a dense vector
-averages a whole chunk, so one fact inside a long heterogeneous chunk gets
-diluted, while term matching does not average.
-
-**Citations are verified, not trusted.** Every section the model names is
-matched against what it was actually shown. One that does not match is
-dropped before the reader sees it, and the model gets a single chance to
-correct itself first.
-
-No orchestration framework. The pipeline is six steps that a person can read
-end to end, and each one is a place a wrong answer can be traced to.
+---
 
 ## If something goes wrong
 
-**"Configuration is incomplete"** — a variable in `.env.example` is missing
-from your `.env`. The message names it. Every setting is required; nothing
-falls back to a value in the code.
+**"Configuration is incomplete"** — a variable from `.env.example` is missing
+from your `.env`. The message names it.
 
-**503, "No chunks are indexed"** — the ingest step has not run, or ran against
-a different Qdrant than the one the API is talking to. Check `GET /health`:
-it reports the collection and how many chunks are in it.
+**503, "No chunks are indexed"** — the ingest scripts have not been run, or
+were run against a different search engine than the one the service is using.
+`GET /health` shows which one it is talking to and how many chunks it sees.
 
-**The container cannot load the embedding model** — the image is built with
-`HF_HUB_OFFLINE=1`, so a cache miss fails loudly instead of quietly
-downloading 130MB on the first question. It means `DENSE_MODEL` or
-`SPARSE_MODEL` in `.env` no longer matches what was baked in. Rebuild:
-`docker compose build --no-cache`.
+**"AI_GATEWAY_API_KEY is not set"** — the key is missing from `.env`.
+Everything except the final answer works without it, so search and the ingest
+scripts will still run.
 
-**Changed `CHUNK_MAX_WORDS` or either model** — the stored index no longer
-agrees with the configuration. Re-run `extract.py`, `chunk.py`, `index.py`,
-or `docker compose down -v && docker compose up`.
-
-## Layout
-
-```
-app/
-  api.py            HTTP endpoints, and the static interface
-  answer.py         the pipeline: condense, retrieve, gate, prompt, verify
-  config.py         every setting, in one place
-  ingest/           PDF extraction, clause-aware chunking
-  search/           embeddings, the Qdrant collection, hybrid retrieval
-  generate/         the model client, prompt rendering, prompt files by version
-  safety/           citation and refusal guards, personal-data masking
-scripts/            one debug CLI per stage - run any step on its own
-eval/               the measurement harnesses and the question set
-tests/              196 tests, no network, no Docker
-docs/               results, and the write-up behind each number
-```
+**Answers cite the wrong sections** — check retrieval first:
+`uv run scripts/search.py "your question"`. If the right section is not in
+that list, no prompt change will fix it.

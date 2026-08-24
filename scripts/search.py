@@ -1,12 +1,16 @@
-"""Debug CLI for phase 3 - retrieval only, no LLM involved.
+"""Debug CLI: retrieval only, no model involved.
 
     uv run scripts/search.py "confidentiality obligations"
     uv run scripts/search.py "termination notice" --k 10
     uv run scripts/search.py "payment terms" --doc hosting
     uv run scripts/search.py "force majeure" --text
+    uv run scripts/search.py "the price per unit" --mode dense
 
-This is the tool that tells you whether a bad answer is retrieval's fault.
-If the right clause is not in this list, no prompt will save you.
+Tells you whether a bad answer is retrieval's fault. If the right clause is
+not in this list, no prompt will save you.
+
+--mode overrides SEARCH_MODE for one search, which is the quickest way to see
+what dense and sparse each contribute to a particular question.
 """
 
 from __future__ import annotations
@@ -14,17 +18,28 @@ from __future__ import annotations
 import argparse
 import textwrap
 
+from app.config import settings
 from app.search.indexing import backend_description, collection_size, get_client
-from app.search.retrieval import infer_doc_filter, list_indexed_documents, search
+from app.search.retrieval import (
+    SEARCH_MODES,
+    infer_doc_filter,
+    list_indexed_documents,
+    search,
+)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Search the contract index.")
     parser.add_argument("question", help="what to search for")
     parser.add_argument("--k", type=int, default=5, help="how many results (default 5)")
-    parser.add_argument("--doc", help="restrict to one document id")
+    parser.add_argument("--doc", help="restrict to one document id, or a fragment of one")
     parser.add_argument("--no-filter", action="store_true", help="disable automatic doc filtering")
     parser.add_argument("--text", action="store_true", help="print the matching text too")
+    parser.add_argument(
+        "--mode",
+        choices=SEARCH_MODES,
+        help=f"override SEARCH_MODE for this search (currently {settings.search_mode})",
+    )
     args = parser.parse_args()
 
     client = get_client()
@@ -53,13 +68,22 @@ def main() -> None:
         source = "requested" if requested else "inferred from the question"
         print(f"Filtering to {active} ({source})\n")
 
+    mode = args.mode or settings.search_mode
     results = search(
-        args.question, top_k=args.k, doc_id=requested, auto_filter=not args.no_filter, client=client
+        args.question,
+        top_k=args.k,
+        doc_id=requested,
+        auto_filter=not args.no_filter,
+        client=client,
+        mode=mode,
     )
     if not results:
         print("Nothing found.")
         return
 
+    # Hybrid scores come from rank fusion, so they are not comparable with the
+    # cosine similarities dense and sparse report.
+    print(f"mode: {mode}\n")
     print(f"{'#':<3}{'score':<9}{'document':<30}{'section':<14}heading")
     print("-" * 100)
     for result in results:

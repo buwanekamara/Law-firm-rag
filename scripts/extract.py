@@ -1,4 +1,4 @@
-"""Debug CLI for phase 1.
+"""Debug CLI: PDFs -> cleaned per-page text.
 
     uv run scripts/extract.py                 # all contracts
     uv run scripts/extract.py --doc hosting   # just one

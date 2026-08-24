@@ -1,12 +1,10 @@
 """Prompt loading.
 
-Prompts live as files rather than as string literals buried in the code, so
-that a change to the wording is a visible diff, and so the report can show a
-before-and-after between versions. PROMPT_VERSION picks which file is used.
+Prompts are files, not string literals, so a wording change is a visible diff.
+PROMPT_VERSION picks the file.
 
-Placeholders are double-braced ({{QUESTION}}) and filled by plain string
-replacement rather than str.format, because the prompts contain JSON examples
-and every { in them would otherwise have to be escaped.
+{{PLACEHOLDER}} slots are filled by str.replace, not str.format - the prompts
+contain JSON examples and every { would need escaping.
 """
 
 from __future__ import annotations
@@ -20,19 +18,16 @@ from app.config import settings
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 # The user's message is fenced so the model can tell a question from an
-# instruction. A fence only works if the person on the other side cannot close
-# it: a question that itself contains the fence characters would otherwise end
-# it early, leaving whatever follows sitting exactly where instructions go.
-# Runs of three or more quote characters are therefore replaced with visually
-# similar characters that carry no structural meaning. The reader sees the same
-# sentence; the parser sees no fence.
+# instruction. That only works if the question cannot close the fence itself,
+# so runs of three or more quotes become lookalike characters: same sentence to
+# the reader, no fence to the parser.
 FENCE = "'''"
 _FENCE_RUN = re.compile("([`'\"])\\1{2,}")
 _LOOKALIKE = {"'": "\u2019", "`": "\u00b4", '"': "\u201d"}
 
 
 def neutralise_fences(text: str) -> str:
-    """Make user-supplied text unable to close the fence it is wrapped in."""
+    """Stop user text closing the fence it is wrapped in."""
     return _FENCE_RUN.sub(lambda match: _LOOKALIKE[match.group(1)] * len(match.group(0)), text or "")
 
 
@@ -78,12 +73,11 @@ def render_user_prompt(
 ) -> str:
     """Fill an answer template.
 
-    Older prompt versions have no {{HISTORY}} slot; substituting into them is
-    a no-op, so one call site serves every version.
+    Older versions have no {{HISTORY}} slot; substituting is a no-op there.
     """
     _, template = load_prompt(version)
-    # Excerpts are corpus text and are not fenced. The question and the history
-    # come from whoever is using the system, so both are.
+    # Excerpts are corpus text. Question and history come from the user, so
+    # both are fenced.
     return (
         template.replace("{{EXCERPTS}}", excerpts)
         .replace("{{QUESTION}}", fenced(question))
@@ -92,5 +86,5 @@ def render_user_prompt(
 
 
 def available_versions() -> list[str]:
-    """Answer prompt versions on disk, newest naming aside."""
+    """Answer prompt versions on disk."""
     return sorted(path.stem.removeprefix("answer_") for path in PROMPTS_DIR.glob("answer_*.md"))
